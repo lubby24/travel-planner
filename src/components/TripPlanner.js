@@ -44,6 +44,9 @@ const TripPlanner = () => {
   const [dragOverDayIndex, setDragOverDayIndex] = useState(null);
   const [dragOverPosition, setDragOverPosition] = useState(null); // 'before' 或 'after'
 
+  // 添加新的状态
+  const [hasShownDragTip, setHasShownDragTip] = useState(false);
+
   useEffect(() => {
     if (window.BMapGL && !map) {
       try {
@@ -318,7 +321,20 @@ const TripPlanner = () => {
     }));
     
     setItinerary(newItinerary);
-    message.success('请将景点拖拽到对应日期进行安排');
+
+    // 只在第一次生成行程时显示提示
+    if (!hasShownDragTip) {
+      message.success('请将景点拖拽到对应日期进行安排');
+      setHasShownDragTip(true);
+    }
+  };
+
+  // 在组件重置或清空时重置提示状态
+  const handleReset = () => {
+    setItinerary([]);
+    setSelectedAttractions([]);
+    setHasShownDragTip(false);
+    form.resetFields();
   };
 
   // 添加景点到特定日期的函数
@@ -490,8 +506,28 @@ const TripPlanner = () => {
       map.openInfoWindow(infoWindow, new window.BMapGL.Point(point.location.lng, point.location.lat));
     };
 
+    // 添加点击外部关闭的处理函数
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        const modalElement = document.getElementById('add-attraction-modal');
+        const isClickOutside = modalElement && !modalElement.contains(event.target);
+        
+        if (isModalVisible && isClickOutside) {
+          setIsModalVisible(false);
+          setSearchResults([]);
+          setSearchValue('');
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }, [isModalVisible]);
+
     return (
       <div
+        id="add-attraction-modal"
         style={{
           position: 'fixed',
           right: isModalVisible ? 0 : '-400px',
@@ -1160,7 +1196,24 @@ const TripPlanner = () => {
     setItinerary(newItinerary);
   };
 
-  // 修改行程展示部分的景点渲染，在 Timeline.Item 中添加点击事件
+  // 添加显示景点信息的函数
+  const showAttractionInfo = (attraction) => {
+    if (!map) return;
+    
+    // 清除现有标记
+    map.clearOverlays();
+    
+    // 创建标记
+    const point = new window.BMapGL.Point(attraction.location.lng, attraction.location.lat);
+    const marker = new window.BMapGL.Marker(point);
+    map.addOverlay(marker);
+    
+    // 调整地图视野
+    map.setCenter(point);
+    map.setZoom(15);
+  };
+
+  // 修改景点列表渲染
   const renderItinerary = () => {
     if (itinerary.length === 0) return null;
 
@@ -1324,7 +1377,7 @@ const TripPlanner = () => {
                                   fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
                                 }}
                                 onClick={() => {
-                                  showAttractionOnMap(map, item.attraction);
+                                  showAttractionInfo(item.attraction);
                                   setHighlightedAttraction(item.attraction.id);
                                 }}
                               >
@@ -1513,28 +1566,24 @@ const TripPlanner = () => {
                     size="small"
                     dataSource={attractions}
                     renderItem={item => {
-                      const selected = isAttractionSelected(item);
+                      const selected = selectedAttractions.some(a => a.id === item.id);
                       return (
                         <List.Item
                           style={{
-                            background: selected ? '#f0f8ff' : 'transparent',
-                            opacity: selected ? 0.7 : 1,
+                            cursor: 'pointer',
                             padding: '12px',
-                            borderRadius: '4px',
-                            marginBottom: '8px',
-                            border: '1px solid #f0f0f0',
-                            transition: 'all 0.3s'
+                            transition: 'all 0.3s',
+                            backgroundColor: highlightedAttraction === item.id ? '#e6f7ff' : '#fff',
+                            '&:hover': {
+                              backgroundColor: '#f5f5f5'
+                            }
                           }}
-                          actions={[
-                            <Button 
-                              type={selected ? "text" : "primary"}
-                              size="small"
-                              onClick={() => handleAttractionSelect(item)}
-                              disabled={selected}
-                            >
-                              {selected ? '已添加' : '添加到行程'}
-                            </Button>
-                          ]}
+                          onClick={() => {
+                            showAttractionInfo(item);
+                            setHighlightedAttraction(item.id);
+                          }}
+                          onMouseEnter={() => setHighlightedAttraction(item.id)}
+                          onMouseLeave={() => setHighlightedAttraction(null)}
                         >
                           <List.Item.Meta
                             title={
@@ -1557,6 +1606,22 @@ const TripPlanner = () => {
                               </div>
                             }
                           />
+                          <Space>
+                            <Button
+                              type="primary"
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation(); // 阻止点击事件冒泡
+                                if (!selected) {
+                                  setSelectedAttractions([...selectedAttractions, item]);
+                                  
+                                }
+                              }}
+                              disabled={selected}
+                            >
+                              {selected ? '已添加' : '添加'}
+                            </Button>
+                          </Space>
                         </List.Item>
                       );
                     }}
@@ -1748,7 +1813,7 @@ const TripPlanner = () => {
                                         fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
                                       }}
                                       onClick={() => {
-                                        showAttractionOnMap(map, item.attraction);
+                                        showAttractionInfo(item.attraction);
                                         setHighlightedAttraction(item.attraction.id);
                                       }}
                                     >
