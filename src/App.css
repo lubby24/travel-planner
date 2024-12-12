@@ -1,0 +1,26 @@
+.layout {
+  min-height: 100vh;
+}
+
+.ant-layout-header h1 {
+  margin: 0;
+  padding: 0;
+}
+
+.ant-card {
+  margin-bottom: 20px;
+}
+
+#bmap-container {
+  width: 100%;
+  height: 600px;
+  position: relative;
+}
+
+.BMap_cpyCtrl {
+  display: none;
+}
+
+.anchorBL {
+  display: none;
+} 
