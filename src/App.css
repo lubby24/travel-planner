@@ -1,14 +1,40 @@
 .layout {
   min-height: 100vh;
+  background-color: #f5f7fa;
 }
 
-.ant-layout-header h1 {
-  margin: 0;
-  padding: 0;
+.ant-layout-header {
+  position: relative;
+  z-index: 1;
 }
 
+/* 添加标题悬停效果 */
+.ant-typography {
+  transition: all 0.3s ease;
+}
+
+.ant-layout-header:hover .ant-typography:first-child {
+  transform: translateY(-2px);
+}
+
+.ant-layout-header:hover .ant-typography:last-child {
+  opacity: 0.8;
+}
+
+/* 添加内容区域样式 */
+.ant-layout-content {
+  padding: 24px 50px;
+}
+
+/* 添加卡片样式 */
 .ant-card {
-  margin-bottom: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: all 0.3s ease;
+}
+
+.ant-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 #bmap-container {
