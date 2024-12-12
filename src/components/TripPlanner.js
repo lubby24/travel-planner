@@ -39,6 +39,11 @@ const TripPlanner = () => {
   // 添加预览状态
   const [previewImage, setPreviewImage] = useState(null);
 
+  // 添加新的状态来管理高亮的景点
+  const [highlightedAttraction, setHighlightedAttraction] = useState(null);
+  const [dragOverDayIndex, setDragOverDayIndex] = useState(null);
+  const [dragOverPosition, setDragOverPosition] = useState(null); // 'before' 或 'after'
+
   useEffect(() => {
     if (window.BMapGL && !map) {
       try {
@@ -291,79 +296,59 @@ const TripPlanner = () => {
     return `${(meters / 1000).toFixed(1)}公里`;
   };
 
-  // 修改生成行程函数，添加智能排序
+  // 修改生成行程函数
   const handleGenerateItinerary = () => {
     const values = form.getFieldsValue();
     const { dates } = values;
     
-    if (!dates || selectedAttractions.length === 0) return;
+    if (!dates || selectedAttractions.length === 0) {
+      message.warning('请选择出行日期和景点');
+      return;
+    }
 
     const startDate = dates[0];
     const endDate = dates[1];
     const days = endDate.diff(startDate, 'days') + 1;
     
-    // 按天组织行程
-    const newItinerary = [];
-    const attractionsPerDay = Math.ceil(selectedAttractions.length / days);
-    
-    for (let day = 0; day < days; day++) {
-      const currentDate = moment(startDate).add(day, 'days');
-      let dayAttractions = selectedAttractions.slice(
-        day * attractionsPerDay,
-        (day + 1) * attractionsPerDay
-      );
-
-      // 智能排序：按照距离最近原则排序
-      if (dayAttractions.length > 1) {
-        const sortedAttractions = [dayAttractions[0]]; // 从第一个景点开始
-        dayAttractions = dayAttractions.slice(1);
-
-        while (dayAttractions.length > 0) {
-          const lastPoint = sortedAttractions[sortedAttractions.length - 1];
-          let nearestIndex = 0;
-          let minDistance = Infinity;
-
-          // 找到距离上一个景点最近的下一个景点
-          dayAttractions.forEach((attraction, index) => {
-            const distance = calculateDistance(
-              lastPoint.location,
-              attraction.location
-            );
-            if (distance < minDistance) {
-              minDistance = distance;
-              nearestIndex = index;
-            }
-          });
-
-          sortedAttractions.push(dayAttractions[nearestIndex]);
-          dayAttractions.splice(nearestIndex, 1);
-        }
-
-        dayAttractions = sortedAttractions;
-      }
-
-      // 计算相邻景点间的距离
-      const attractionsWithDistance = dayAttractions.map((attraction, index) => {
-        let distance = null;
-        if (index < dayAttractions.length - 1) {
-          distance = calculateDistance(
-            attraction.location,
-            dayAttractions[index + 1].location
-          );
-        }
-        return { attraction, distance };
-      });
-      
-      const dayPlan = {
-        day: day + 1,
-        date: currentDate.format('YYYY-MM-DD'),
-        attractions: attractionsWithDistance
-      };
-      
-      newItinerary.push(dayPlan);
-    }
+    // 创建空的行程数组
+    const newItinerary = Array.from({ length: days }, (_, index) => ({
+      day: index + 1,
+      date: moment(startDate).add(index, 'days').format('YYYY-MM-DD'),
+      attractions: []
+    }));
     
     setItinerary(newItinerary);
+    message.success('请将景点拖拽到对应日期进行安排');
+  };
+
+  // 添加景点到特定日期的函数
+  const handleAddToDay = (attraction, dayIndex) => {
+    const newItinerary = [...itinerary];
+    const dayPlan = newItinerary[dayIndex];
+    
+    // 检查景点是否已经在任何日期中
+    const isAlreadyArranged = itinerary.some(day => 
+      day.attractions.some(item => item.attraction.id === attraction.id)
+    );
+    
+    if (isAlreadyArranged) {
+      message.warning('该景点已经安排在行程中');
+      return;
+    }
+    
+    // 添加景点到当天行程
+    dayPlan.attractions.push({
+      attraction,
+      distance: null,
+      arranged: true
+    });
+    
+    // 重新计算该天所有景点之间的距离
+    recalculateDistances(dayPlan);
+    
+    setItinerary(newItinerary);
+    // 更新地图路线
+    drawRoute(dayPlan.attractions.map(item => item.attraction));
   };
 
   // 添加景点调整函数
@@ -384,32 +369,25 @@ const TripPlanner = () => {
     setItinerary(newItinerary);
   };
 
-  // 添加景点移动函数
-  const handleDayAttractionMove = (dayIndex, attractionIndex, direction) => {
-    const newItinerary = [...itinerary];
-    const dayPlan = newItinerary[dayIndex];
-    const { attractions } = dayPlan;
-    
-    if (direction === 'up' && attractionIndex > 0) {
-      // 向上移动
-      [attractions[attractionIndex], attractions[attractionIndex - 1]] = 
-      [attractions[attractionIndex - 1], attractions[attractionIndex]];
-    } else if (direction === 'down' && attractionIndex < attractions.length - 1) {
-      // 向下移动
-      [attractions[attractionIndex], attractions[attractionIndex + 1]] = 
-      [attractions[attractionIndex + 1], attractions[attractionIndex]];
-    }
-    
-    setItinerary(newItinerary);
-    // 更新路线
-    drawRoute(attractions.map(item => item.attraction));
-  };
-
-  // 添加处理函数
+  // 修改处理函数
   const handleAddAttraction = (dayIndex) => {
-    const available = attractions.filter(
-      a => !selectedAttractions.some(sa => sa.id === a.id)
+    // 获取所有已经安排到行程中的景点ID
+    const arrangedAttractionIds = new Set(
+      itinerary.flatMap(day => 
+        day.attractions.map(item => item.attraction.id)
+      )
     );
+    
+    // 筛选出已选择但还未安排的景点
+    const available = selectedAttractions.filter(
+      attraction => !arrangedAttractionIds.has(attraction.id)
+    );
+    
+    if (available.length === 0) {
+      message.info('没有待安排的景点，请先在左侧添加景点');
+      return;
+    }
+
     setAvailableAttractions(available);
     setCurrentDayIndex(dayIndex);
     setIsModalVisible(true);
@@ -417,66 +395,40 @@ const TripPlanner = () => {
 
   const handleModalOk = (selectedAttraction) => {
     if (selectedAttraction && currentDayIndex !== null) {
-      const newItinerary = [...itinerary];
-      const dayPlan = newItinerary[currentDayIndex];
-      
-      // 添加新景点到当天行程
-      dayPlan.attractions.push({
-        time: `下午 ${14 + dayPlan.attractions.length * 2}:00`,
-        attraction: selectedAttraction
-      });
-      
-      // 更新选中的景点列表
-      setSelectedAttractions([...selectedAttractions, selectedAttraction]);
-      setItinerary(newItinerary);
+      handleAddToDay(selectedAttraction, currentDayIndex);
+      // 更新选中的景点列表（如果还没有选中）
+      if (!selectedAttractions.some(a => a.id === selectedAttraction.id)) {
+        setSelectedAttractions([...selectedAttractions, selectedAttraction]);
+      }
     }
     setIsModalVisible(false);
   };
 
-  // 修改模态框组件为右侧面板
+  // 修改模态框组件，添加地址搜索功能
   const AddAttractionModal = () => {
     const [searchValue, setSearchValue] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
+    const [selectedPoint, setSelectedPoint] = useState(null);
 
-    // 修改搜索地址函数
+    // 修改地址搜索函数，添加地图标记处理
     const handleAddressSearch = (value) => {
       if (!value || !map) return;
       setSearching(true);
+      setSelectedPoint(null); // 重置选中状态
 
-      // 清除之前的标记
+      // 清除现有标记
       map.clearOverlays();
 
       const local = new window.BMapGL.LocalSearch(map, {
         pageCapacity: 10,
-        onMarkersSet: function(pois) {
-          // 当标记被设置时，调整地图视野
-          if (pois && pois.length > 0) {
-            // 收集所有点的坐标
-            const points = pois.map(poi => poi.marker.getPosition());
-            
-            // 计算最佳视野
-            const viewPort = map.getViewport(points, {
-              margins: [50, 50, 50, 50] // 设置边距，使视野更合适
-            });
-            
-            // 平滑地调整地图视野
-            map.animateViewport({
-              center: viewPort.center,
-              zoom: viewPort.zoom,
-              tilt: 0,
-              heading: 0,
-              duration: 1000 // 动画持续时间
-            });
-          }
-        },
         onSearchComplete: function(results) {
           setSearching(false);
           if (results && results.getCurrentNumPois()) {
             const points = [];
             for (let i = 0; i < results.getCurrentNumPois(); i++) {
               const poi = results.getPoi(i);
-              points.push({
+              const point = {
                 id: `custom-${Date.now()}-${i}`,
                 name: poi.title,
                 address: poi.address || '地址未知',
@@ -485,76 +437,29 @@ const TripPlanner = () => {
                   lat: poi.point.lat
                 },
                 type: poi.type || "地点"
-              });
+              };
+              points.push(point);
 
-              // 为每个结果添加标记和信息窗口
-              const marker = new window.BMapGL.Marker(poi.point, {
-                enableAnimation: true // 启用动画效果
-              });
-              
-              // 添加跳动动画
-              marker.setAnimation(window.BMAP_ANIMATION_BOUNCE);
-              setTimeout(() => {
-                marker.setAnimation(null);
-              }, 2000); // 2秒后停止跳动
-
+              // 为每个结果添加标记
+              const marker = new window.BMapGL.Marker(poi.point);
               const label = new window.BMapGL.Label(`${i + 1}. ${poi.title}`, {
                 position: poi.point,
-                offset: new window.BMapGL.Size(25, 0)
-              });
-              label.setStyle({
-                color: '#fff',
-                backgroundColor: '#1890ff',
-                border: 'none',
-                padding: '5px 10px',
-                borderRadius: '3px',
-                fontSize: '12px',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                zIndex: 100
-              });
-
-              // 添加鼠标悬停效果
-              marker.addEventListener('mouseover', () => {
-                label.setStyle({
-                  backgroundColor: '#096dd9',
-                  transform: 'scale(1.05)'
-                });
+                offset: new window.BMapGL.Size(20, -20)
               });
               
-              marker.addEventListener('mouseout', () => {
-                label.setStyle({
-                  backgroundColor: '#1890ff',
-                  transform: 'scale(1)'
-                });
-              });
-
               // 添加点击事件
               marker.addEventListener('click', () => {
-                const infoWindow = new window.BMapGL.InfoWindow(`
-                  <div style="padding: 10px;">
-                    <h4 style="margin: 0 0 5px 0;">${poi.title}</h4>
-                    <p style="margin: 0; color: #666;">${poi.address || '地址未知'}</p>
-                    ${poi.type ? `<p style="margin: 5px 0 0 0; color: #1890ff;">类型：${poi.type}</p>` : ''}
-                    <div style="margin-top: 10px;">
-                      <button onclick="document.querySelector('[data-poi-id=\\"${i}\\"]').click()" 
-                              style="background: #1890ff; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-                        添加到行程
-                      </button>
-                    </div>
-                  </div>
-                `, {
-                  width: 300,
-                  height: 120,
-                  title: '',
-                  enableAnimation: true // 启用信息窗口动画
-                });
-                map.openInfoWindow(infoWindow, poi.point);
+                showPointInfo(point);
               });
 
               map.addOverlay(marker);
               map.addOverlay(label);
             }
             setSearchResults(points);
+            
+            // 调整地图视野
+            const viewPoints = points.map(p => new window.BMapGL.Point(p.location.lng, p.location.lat));
+            map.setViewport(viewPoints);
           } else {
             setSearchResults([]);
           }
@@ -562,6 +467,27 @@ const TripPlanner = () => {
       });
 
       local.search(value);
+    };
+
+    // 添加显示地点信息的函数
+    const showPointInfo = (point) => {
+      setSelectedPoint(point);
+      
+      // 创建信息窗口
+      const infoWindow = new window.BMapGL.InfoWindow(`
+        <div style="padding: 10px;">
+          <h4 style="margin: 0 0 5px 0;">${point.name}</h4>
+          <p style="margin: 0; color: #666;">${point.address}</p>
+          ${point.type ? `<p style="margin: 5px 0 0 0; color: #1890ff;">类型：${point.type}</p>` : ''}
+        </div>
+      `, {
+        width: 300,
+        height: 120,
+        title: '',
+        enableAnimation: true
+      });
+
+      map.openInfoWindow(infoWindow, new window.BMapGL.Point(point.location.lng, point.location.lat));
     };
 
     return (
@@ -607,27 +533,19 @@ const TripPlanner = () => {
             onSearch={handleAddressSearch}
             enterButton
             loading={searching}
-            style={{ marginBottom: 16 }}
           />
-          <div style={{ color: '#666', fontSize: '12px' }}>
+          <div style={{ color: '#666', fontSize: '12px', marginTop: '8px' }}>
             支持搜索：车站、机场、酒店、景点、餐厅等任意地点
           </div>
         </div>
 
-        <div style={{ 
-          flex: 1, 
-          overflow: 'auto',
-          padding: '16px',
-          backgroundColor: '#f5f5f5'
-        }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
           <List
-            size="small"
+            itemLayout="horizontal"
             dataSource={searchResults}
             loading={searching}
-            locale={{ emptyText: searchValue ? '未找到相关地址' : '请输入地址关键词' }}
-            renderItem={(item, index) => (
+            renderItem={item => (
               <List.Item
-                data-poi-id={index}
                 style={{
                   padding: '12px',
                   borderRadius: '4px',
@@ -635,20 +553,12 @@ const TripPlanner = () => {
                   border: '1px solid #f0f0f0',
                   cursor: 'pointer',
                   transition: 'all 0.3s',
-                  backgroundColor: '#fff',
+                  backgroundColor: selectedPoint?.id === item.id ? '#e6f7ff' : '#fff',
                   '&:hover': {
                     backgroundColor: '#f5f5f5'
                   }
                 }}
-                onClick={() => {
-                  handleModalOk(item);
-                  setSearchValue('');
-                  setSearchResults([]);
-                  setIsModalVisible(false);
-                  // 点击列表项时，在地图上显示该位置
-                  const point = new window.BMapGL.Point(item.location.lng, item.location.lat);
-                  map.centerAndZoom(point, 15);
-                }}
+                onClick={() => showPointInfo(item)}
               >
                 <List.Item.Meta
                   title={
@@ -665,9 +575,25 @@ const TripPlanner = () => {
                     </div>
                   }
                 />
-                <Button type="primary" size="small">添加</Button>
+                <Button 
+                  type="primary" 
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleModalOk(item);
+                    setSearchValue('');
+                    setSearchResults([]);
+                    setSelectedPoint(null);
+                    setIsModalVisible(false);
+                  }}
+                >
+                  添加到行程
+                </Button>
               </List.Item>
             )}
+            locale={{
+              emptyText: searchValue ? '未找到相关地址' : '请输入地址关键词'
+            }}
           />
         </div>
       </div>
@@ -691,7 +617,7 @@ const TripPlanner = () => {
     map.addOverlay(startMarker);
     map.addOverlay(endMarker);
 
-    // 创建驾车路线规划
+    // 创建驾车线规划
     const driving = new window.BMapGL.DrivingRoute(map, {
       renderOptions: {
         map: map,
@@ -1074,7 +1000,167 @@ const TripPlanner = () => {
     </Modal>
   );
 
-  // 修改行程展示部分，添加分享按钮
+  // 在现有的 import 语句下方添加新的函数
+  const showAttractionOnMap = (map, attraction) => {
+    if (!map || !attraction) return;
+
+    // 清除现有标记
+    map.clearOverlays();
+
+    const point = new window.BMapGL.Point(attraction.location.lng, attraction.location.lat);
+    
+    // 创建标记
+    const marker = new window.BMapGL.Marker(point, {
+      enableAnimation: true
+    });
+    map.addOverlay(marker);
+    
+    // 添加跳动动画
+    marker.setAnimation(window.BMAP_ANIMATION_BOUNCE);
+    
+    // 创建信息窗口
+    const infoWindow = new window.BMapGL.InfoWindow(`
+      <div style="padding: 10px;">
+        <h4 style="margin: 0 0 5px 0;">${attraction.name}</h4>
+        <p style="margin: 0; color: #666;">${attraction.address}</p>
+      </div>
+    `, {
+      width: 250,
+      height: 80,
+      enableAnimation: true
+    });
+
+    // 显示信息窗口
+    map.openInfoWindow(infoWindow, point);
+    
+    // 调整地图视野
+    map.centerAndZoom(point, 15);
+  };
+
+  // 添加拖拽相关的处理函数
+  const handleDragStart = (e, attraction) => {
+    e.dataTransfer.setData('attraction', JSON.stringify(attraction));
+  };
+
+  const handleDragOver = (e, dayIndex) => {
+    e.preventDefault();
+    e.currentTarget.style.backgroundColor = '#f0f8ff';
+    setDragOverDayIndex(dayIndex);
+    
+    // 计算拖拽位置
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    setDragOverPosition(y < rect.height / 2 ? 'before' : 'after');
+  };
+
+  const handleDragLeave = (e) => {
+    e.currentTarget.style.backgroundColor = '';
+    setDragOverDayIndex(null);
+    setDragOverPosition(null);
+  };
+
+  const handleDrop = (e, toDayIndex) => {
+    e.preventDefault();
+    e.currentTarget.style.backgroundColor = '';
+    
+    try {
+      const dragData = JSON.parse(e.dataTransfer.getData('attraction'));
+      
+      // 检查是否是从行程中拖拽的景点
+      if (dragData.fromDay !== undefined) {
+        // 如果是同一天的拖放，需要处理排序
+        if (dragData.fromDay === toDayIndex) {
+          handleSameDayReorder(dragData.fromDay, dragData.fromIndex, dragOverPosition);
+        } else {
+          handleAttractionMove(dragData.fromDay, dragData.fromIndex, toDayIndex);
+        }
+      } else {
+        // 从已选景点列表拖拽的情况
+        handleAddToDay(dragData, toDayIndex);
+      }
+    } catch (error) {
+      console.error('Drop error:', error);
+    }
+    
+    // 重置拖放状态
+    setDragOverDayIndex(null);
+    setDragOverPosition(null);
+  };
+
+  // 添加同一天内重新排序的函数
+  const handleSameDayReorder = (dayIndex, fromIndex, position) => {
+    const newItinerary = [...itinerary];
+    const dayPlan = newItinerary[dayIndex];
+    const movedAttraction = dayPlan.attractions[fromIndex];
+    
+    // 从原位置删除
+    dayPlan.attractions.splice(fromIndex, 1);
+    
+    // 计算新的插入位置
+    let toIndex = fromIndex;
+    if (position === 'before') {
+      toIndex = Math.max(0, fromIndex - 1);
+    } else if (position === 'after') {
+      toIndex = Math.min(dayPlan.attractions.length, fromIndex + 1);
+    }
+    
+    // 插入到新位置
+    dayPlan.attractions.splice(toIndex, 0, movedAttraction);
+    
+    // 重新计算该天所有景点之间的距离
+    recalculateDistances(dayPlan);
+    
+    setItinerary(newItinerary);
+    // 更新地图路线
+    drawRoute(dayPlan.attractions.map(item => item.attraction));
+  };
+
+  // 修改重新计算距离的函数
+  const recalculateDistances = (dayPlan) => {
+    if (!dayPlan.attractions) return;
+    
+    dayPlan.attractions.forEach((item, index) => {
+      if (index < dayPlan.attractions.length - 1) {
+        const nextAttraction = dayPlan.attractions[index + 1];
+        item.distance = calculateDistance(
+          item.attraction.location,
+          nextAttraction.attraction.location
+        );
+      } else {
+        item.distance = null;
+      }
+    });
+  };
+
+  // 添加跨天移动景点的函数
+  const handleAttractionMove = (fromDayIndex, fromAttractionIndex, toDayIndex) => {
+    const newItinerary = [...itinerary];
+    
+    // 获取要移动的景点
+    const movedAttraction = newItinerary[fromDayIndex].attractions[fromAttractionIndex];
+    
+    // 从原来的日期中删除
+    newItinerary[fromDayIndex].attractions.splice(fromAttractionIndex, 1);
+    
+    // 添加到新的日期
+    newItinerary[toDayIndex].attractions.push(movedAttraction);
+    
+    // 重新计算两个日期的距离
+    recalculateDistances(newItinerary[fromDayIndex]);
+    recalculateDistances(newItinerary[toDayIndex]);
+    
+    // 如果原日期没有景点了，更新地图显示
+    if (newItinerary[fromDayIndex].attractions.length > 0) {
+      drawRoute(newItinerary[fromDayIndex].attractions.map(item => item.attraction));
+    }
+    
+    // 更新目标日期的地图显示
+    drawRoute(newItinerary[toDayIndex].attractions.map(item => item.attraction));
+    
+    setItinerary(newItinerary);
+  };
+
+  // 修改行程展示部分的景点渲染，在 Timeline.Item 中添加点击事件
   const renderItinerary = () => {
     if (itinerary.length === 0) return null;
 
@@ -1137,68 +1223,149 @@ const TripPlanner = () => {
                     </Button>
                   </Space>
                 }
+                style={{ 
+                  backgroundColor: dayPlan.attractions.length === 0 ? '#fafafa' : '#fff'
+                }}
+                bodyStyle={{
+                  minHeight: '100px'
+                }}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, dayIndex)}
               >
-                <Timeline>
-                  {dayPlan.attractions.map((item, index) => (
-                    <Timeline.Item 
-                      key={index}
-                      color={index === 0 ? 'green' : index === dayPlan.attractions.length - 1 ? 'red' : 'blue'}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Space direction="vertical" size={0}>
-                          <Space>
-                            <span>{item.attraction.name}</span>
-                            <span style={{ color: '#999', fontSize: '12px' }}>
-                              {item.attraction.address}
-                            </span>
-                          </Space>
-                          {item.distance && (
-                            <Button
-                              type="link"
-                              size="small"
-                              style={{ padding: 0, height: 'auto' }}
-                              onClick={() => handleNavigate(
-                                item.attraction.location,
-                                dayPlan.attractions[index + 1].attraction.location
-                              )}
-                            >
-                              <span style={{ color: '#1890ff', fontSize: '12px' }}>
-                                到下一景点距离: {formatDistance(item.distance)}
-                                <ArrowRightOutlined style={{ marginLeft: '4px' }} />
-                              </span>
-                            </Button>
+                {dayPlan.attractions.length === 0 ? (
+                  <div 
+                    style={{ 
+                      height: '100px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      border: dragOverDayIndex === dayIndex ? 
+                        '2px solid #1890ff' : 
+                        '2px dashed #d9d9d9',
+                      borderRadius: '4px',
+                      color: dragOverDayIndex === dayIndex ? '#1890ff' : '#999',
+                      backgroundColor: dragOverDayIndex === dayIndex ? 
+                        'rgba(24,144,255,0.1)' : 
+                        'transparent',
+                      transition: 'all 0.3s'
+                    }}
+                  >
+                    {dragOverDayIndex === dayIndex ? 
+                      '放在这里' : 
+                      '将景点拖拽到这里'
+                    }
+                  </div>
+                ) : (
+                  <Timeline>
+                    {dayPlan.attractions.map((item, index) => (
+                      <Timeline.Item 
+                        key={index}
+                        color={index === 0 ? 'green' : index === dayPlan.attractions.length - 1 ? 'red' : 'blue'}
+                      >
+                        <div 
+                          style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            cursor: 'move',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            backgroundColor: highlightedAttraction === item.attraction.id ? '#e6f7ff' : 'transparent',
+                            border: highlightedAttraction === item.attraction.id ? '1px solid #91d5ff' : '1px solid transparent',
+                            transition: 'all 0.3s',
+                            position: 'relative'
+                          }}
+                          draggable
+                          onDragStart={(e) => {
+                            const dragData = {
+                              ...item.attraction,
+                              fromDay: dayIndex,
+                              fromIndex: index
+                            };
+                            e.dataTransfer.setData('attraction', JSON.stringify(dragData));
+                            e.currentTarget.style.opacity = '0.5';
+                          }}
+                          onDragEnd={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                            setDragOverDayIndex(null);
+                            setDragOverPosition(null);
+                          }}
+                          onDragOver={(e) => handleDragOver(e, dayIndex)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => {
+                            e.stopPropagation();
+                            handleDrop(e, dayIndex);
+                          }}
+                          onMouseEnter={() => setHighlightedAttraction(item.attraction.id)}
+                          onMouseLeave={() => setHighlightedAttraction(null)}
+                        >
+                          {/* 添加拖拽指示器 */}
+                          {dragOverDayIndex === dayIndex && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                height: '2px',
+                                backgroundColor: '#1890ff',
+                                top: dragOverPosition === 'before' ? 0 : '100%',
+                                transform: 'translateY(-50%)',
+                                transition: 'all 0.2s'
+                              }}
+                            />
                           )}
-                        </Space>
-                        <Space>
-                          <Button 
-                            type="text" 
-                            size="small"
-                            onClick={() => handleDayAttractionMove(dayIndex, index, 'up')}
-                            disabled={index === 0}
-                          >
-                            ↑
-                          </Button>
-                          <Button 
-                            type="text" 
-                            size="small"
-                            onClick={() => handleDayAttractionMove(dayIndex, index, 'down')}
-                            disabled={index === dayPlan.attractions.length - 1}
-                          >
-                            ↓
-                          </Button>
-                          <Button 
-                            type="text" 
-                            danger 
-                            size="small"
-                            onClick={() => handleDayAttractionRemove(dayIndex, index)}
-                          >
-                            删除
-                          </Button>
-                        </Space>
-                      </div>
-                    </Timeline.Item>
-                  ))}
-                </Timeline>
+                          <Space direction="vertical" size={0}>
+                            <Space>
+                              <span 
+                                style={{ 
+                                  cursor: 'pointer', 
+                                  color: '#1890ff',
+                                  fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
+                                }}
+                                onClick={() => {
+                                  showAttractionOnMap(map, item.attraction);
+                                  setHighlightedAttraction(item.attraction.id);
+                                }}
+                              >
+                                {item.attraction.name}
+                              </span>
+                              <span style={{ color: '#999', fontSize: '12px' }}>
+                                {item.attraction.address}
+                              </span>
+                            </Space>
+                            {item.distance && (
+                              <Button
+                                type="link"
+                                size="small"
+                                style={{ padding: 0, height: 'auto' }}
+                                onClick={() => handleNavigate(
+                                  item.attraction.location,
+                                  dayPlan.attractions[index + 1].attraction.location
+                                )}
+                              >
+                                <span style={{ color: '#1890ff', fontSize: '12px' }}>
+                                  到下一景点距离: {formatDistance(item.distance)}
+                                  <ArrowRightOutlined style={{ marginLeft: '4px' }} />
+                                </span>
+                              </Button>
+                            )}
+                          </Space>
+                          <Space>
+                            <Button 
+                              type="text" 
+                              danger 
+                              size="small"
+                              onClick={() => handleDayAttractionRemove(dayIndex, index)}
+                            >
+                              删除
+                            </Button>
+                          </Space>
+                        </div>
+                      </Timeline.Item>
+                    ))}
+                  </Timeline>
+                )}
               </Card>
             </Timeline.Item>
           ))}
@@ -1244,17 +1411,47 @@ const TripPlanner = () => {
                 />
               </Form.Item>
               <Form.Item label="已选景点">
-                {selectedAttractions.map(attraction => (
-                  <Tag 
-                    key={attraction.id}
-                    closable
-                    onClose={() => setSelectedAttractions(
-                      selectedAttractions.filter(a => a.id !== attraction.id)
-                    )}
-                  >
-                    {attraction.name}
-                  </Tag>
-                ))}
+                <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                  {selectedAttractions.map(attraction => {
+                    const isArranged = itinerary.some(day => 
+                      day.attractions.some(item => item.attraction.id === attraction.id)
+                    );
+                    
+                    return (
+                      <Tag 
+                        key={attraction.id}
+                        style={{ 
+                          marginBottom: '8px', 
+                          cursor: 'move',
+                          opacity: isArranged ? 0.5 : 1,
+                          backgroundColor: isArranged ? '#f5f5f5' : undefined
+                        }}
+                        color={isArranged ? 'default' : 'blue'}
+                        closable
+                        draggable={!isArranged}
+                        onDragStart={(e) => handleDragStart(e, attraction)}
+                        onClose={() => {
+                          // 如果景点已安排，同时从行程中移除
+                          if (isArranged) {
+                            const newItinerary = itinerary.map(day => ({
+                              ...day,
+                              attractions: day.attractions.filter(
+                                item => item.attraction.id !== attraction.id
+                              )
+                            }));
+                            setItinerary(newItinerary);
+                          }
+                          setSelectedAttractions(
+                            selectedAttractions.filter(a => a.id !== attraction.id)
+                          );
+                        }}
+                      >
+                        {attraction.name}
+                        {isArranged && <span style={{ marginLeft: '4px', color: '#999' }}>已安排</span>}
+                      </Tag>
+                    );
+                  })}
+                </div>
               </Form.Item>
               <Form.Item>
                 <Button 
@@ -1450,68 +1647,149 @@ const TripPlanner = () => {
                           </Button>
                         </Space>
                       }
+                      style={{ 
+                        backgroundColor: dayPlan.attractions.length === 0 ? '#fafafa' : '#fff'
+                      }}
+                      bodyStyle={{
+                        minHeight: '100px'
+                      }}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, dayIndex)}
                     >
-                      <Timeline>
-                        {dayPlan.attractions.map((item, index) => (
-                          <Timeline.Item 
-                            key={index}
-                            color={index === 0 ? 'green' : index === dayPlan.attractions.length - 1 ? 'red' : 'blue'}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Space direction="vertical" size={0}>
-                                <Space>
-                                  <span>{item.attraction.name}</span>
-                                  <span style={{ color: '#999', fontSize: '12px' }}>
-                                    {item.attraction.address}
-                                  </span>
-                                </Space>
-                                {item.distance && (
-                                  <Button
-                                    type="link"
-                                    size="small"
-                                    style={{ padding: 0, height: 'auto' }}
-                                    onClick={() => handleNavigate(
-                                      item.attraction.location,
-                                      dayPlan.attractions[index + 1].attraction.location
-                                    )}
-                                  >
-                                    <span style={{ color: '#1890ff', fontSize: '12px' }}>
-                                      到下一景点距离: {formatDistance(item.distance)}
-                                      <ArrowRightOutlined style={{ marginLeft: '4px' }} />
-                                    </span>
-                                  </Button>
+                      {dayPlan.attractions.length === 0 ? (
+                        <div 
+                          style={{ 
+                            height: '100px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            border: dragOverDayIndex === dayIndex ? 
+                              '2px solid #1890ff' : 
+                              '2px dashed #d9d9d9',
+                            borderRadius: '4px',
+                            color: dragOverDayIndex === dayIndex ? '#1890ff' : '#999',
+                            backgroundColor: dragOverDayIndex === dayIndex ? 
+                              'rgba(24,144,255,0.1)' : 
+                              'transparent',
+                            transition: 'all 0.3s'
+                          }}
+                        >
+                          {dragOverDayIndex === dayIndex ? 
+                            '放在这里' : 
+                            '将景点拖拽到这里'
+                          }
+                        </div>
+                      ) : (
+                        <Timeline>
+                          {dayPlan.attractions.map((item, index) => (
+                            <Timeline.Item 
+                              key={index}
+                              color={index === 0 ? 'green' : index === dayPlan.attractions.length - 1 ? 'red' : 'blue'}
+                            >
+                              <div 
+                                style={{ 
+                                  display: 'flex', 
+                                  justifyContent: 'space-between', 
+                                  alignItems: 'center',
+                                  cursor: 'move',
+                                  padding: '8px 12px',
+                                  borderRadius: '4px',
+                                  backgroundColor: highlightedAttraction === item.attraction.id ? '#e6f7ff' : 'transparent',
+                                  border: highlightedAttraction === item.attraction.id ? '1px solid #91d5ff' : '1px solid transparent',
+                                  transition: 'all 0.3s',
+                                  position: 'relative'
+                                }}
+                                draggable
+                                onDragStart={(e) => {
+                                  const dragData = {
+                                    ...item.attraction,
+                                    fromDay: dayIndex,
+                                    fromIndex: index
+                                  };
+                                  e.dataTransfer.setData('attraction', JSON.stringify(dragData));
+                                  e.currentTarget.style.opacity = '0.5';
+                                }}
+                                onDragEnd={(e) => {
+                                  e.currentTarget.style.opacity = '1';
+                                  setDragOverDayIndex(null);
+                                  setDragOverPosition(null);
+                                }}
+                                onDragOver={(e) => handleDragOver(e, dayIndex)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => {
+                                  e.stopPropagation();
+                                  handleDrop(e, dayIndex);
+                                }}
+                                onMouseEnter={() => setHighlightedAttraction(item.attraction.id)}
+                                onMouseLeave={() => setHighlightedAttraction(null)}
+                              >
+                                {/* 添加拖拽指示器 */}
+                                {dragOverDayIndex === dayIndex && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      left: 0,
+                                      right: 0,
+                                      height: '2px',
+                                      backgroundColor: '#1890ff',
+                                      top: dragOverPosition === 'before' ? 0 : '100%',
+                                      transform: 'translateY(-50%)',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  />
                                 )}
-                              </Space>
-                              <Space>
-                                <Button 
-                                  type="text" 
-                                  size="small"
-                                  onClick={() => handleDayAttractionMove(dayIndex, index, 'up')}
-                                  disabled={index === 0}
-                                >
-                                  ↑
-                                </Button>
-                                <Button 
-                                  type="text" 
-                                  size="small"
-                                  onClick={() => handleDayAttractionMove(dayIndex, index, 'down')}
-                                  disabled={index === dayPlan.attractions.length - 1}
-                                >
-                                  ↓
-                                </Button>
-                                <Button 
-                                  type="text" 
-                                  danger 
-                                  size="small"
-                                  onClick={() => handleDayAttractionRemove(dayIndex, index)}
-                                >
-                                  删除
-                                </Button>
-                              </Space>
-                            </div>
-                          </Timeline.Item>
-                        ))}
-                      </Timeline>
+                                <Space direction="vertical" size={0}>
+                                  <Space>
+                                    <span 
+                                      style={{ 
+                                        cursor: 'pointer', 
+                                        color: '#1890ff',
+                                        fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
+                                      }}
+                                      onClick={() => {
+                                        showAttractionOnMap(map, item.attraction);
+                                        setHighlightedAttraction(item.attraction.id);
+                                      }}
+                                    >
+                                      {item.attraction.name}
+                                    </span>
+                                    <span style={{ color: '#999', fontSize: '12px' }}>
+                                      {item.attraction.address}
+                                    </span>
+                                  </Space>
+                                  {item.distance && (
+                                    <Button
+                                      type="link"
+                                      size="small"
+                                      style={{ padding: 0, height: 'auto' }}
+                                      onClick={() => handleNavigate(
+                                        item.attraction.location,
+                                        dayPlan.attractions[index + 1].attraction.location
+                                      )}
+                                    >
+                                      <span style={{ color: '#1890ff', fontSize: '12px' }}>
+                                        到下一景点距离: {formatDistance(item.distance)}
+                                        <ArrowRightOutlined style={{ marginLeft: '4px' }} />
+                                      </span>
+                                    </Button>
+                                  )}
+                                </Space>
+                                <Space>
+                                  <Button 
+                                    type="text" 
+                                    danger 
+                                    size="small"
+                                    onClick={() => handleDayAttractionRemove(dayIndex, index)}
+                                  >
+                                    删除
+                                  </Button>
+                                </Space>
+                              </div>
+                            </Timeline.Item>
+                          ))}
+                        </Timeline>
+                      )}
                     </Card>
                   </Timeline.Item>
                 ))}
