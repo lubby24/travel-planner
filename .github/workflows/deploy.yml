@@ -6,11 +6,10 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -21,12 +20,12 @@ jobs:
         run: npm install
 
       - name: Build
+        run: npm run build
         env:
           REACT_APP_BAIDU_MAP_AK: ${{ secrets.REACT_APP_BAIDU_MAP_AK }}
-        run: npm run build
 
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages
-          folder: build 
+          folder: build
+          branch: gh-pages 
