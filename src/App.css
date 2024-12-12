@@ -43,10 +43,24 @@
   position: relative;
 }
 
+/* 隐藏地图控件 */
 .BMap_cpyCtrl {
-  display: none;
+  display: none !important;
 }
 
 .anchorBL {
-  display: none;
+  display: none !important;
+}
+
+/* 隐藏缩放控件 */
+.BMap_stdMpZoom {
+  display: none !important;
+}
+
+.BMap_stdMpPan {
+  display: none !important;
+}
+
+.BMap_stdMpType {
+  display: none !important;
 } 

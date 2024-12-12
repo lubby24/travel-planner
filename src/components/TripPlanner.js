@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin, Tabs } from 'antd';
 import { Map, MapApiLoaderHOC, Marker, NavigationControl, ZoomControl } from 'react-bmapgl';
 import moment from 'moment';
-import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import html2canvas from 'html2canvas';
 
 const { Option } = Select;
 
@@ -34,6 +35,9 @@ const TripPlanner = () => {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
+
+  // 添加预览状态
+  const [previewImage, setPreviewImage] = useState(null);
 
   useEffect(() => {
     if (window.BMapGL && !map) {
@@ -745,31 +749,327 @@ const TripPlanner = () => {
     }
   }, []);
 
-  // 添加分享模态框组件
+  // 添加生成图片的函数
+  const generateImage = async () => {
+    const values = form.getFieldsValue();
+    const { destination, dates } = values;
+    
+    // 创建预览元素
+    const element = document.createElement('div');
+    element.style.padding = '20px';
+    element.style.background = '#fff';
+    element.style.width = '800px';
+    element.style.position = 'absolute';
+    element.style.left = '-9999px';
+    
+    // 添加标题和行程信息
+    const header = document.createElement('div');
+    header.style.marginBottom = '20px';
+    header.style.borderBottom = '2px solid #1890ff';
+    header.style.paddingBottom = '10px';
+    header.innerHTML = `
+      <div style="margin-top: 12px; color: #333;">
+        <div style="font-size: 20px; font-weight: 500;">
+          ${destination} 旅行计划
+        </div>
+        <div style="font-size: 14px; color: #666; margin-top: 8px;">
+          出行时间：${dates[0].format('YYYY年MM月DD日')} - ${dates[1].format('YYYY年MM月DD日')}
+          （共 ${dates[1].diff(dates[0], 'days') + 1} 天）
+        </div>
+      </div>
+    `;
+    element.appendChild(header);
+
+    // 添加行程内容
+    const content = document.createElement('div');
+    content.innerHTML = `
+      <div style="font-size: 16px; margin-bottom: 20px;">
+        ${itinerary.map((dayPlan, index) => `
+          <div style="margin-bottom: 15px;">
+            <div style="font-weight: bold; color: #1890ff; margin-bottom: 10px;">
+              第${dayPlan.day}天 (${dayPlan.date})
+            </div>
+            <div style="padding-left: 20px;">
+              ${dayPlan.attractions.map((item, idx) => `
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                  <span style="width: 20px; height: 20px; border-radius: 50%; background: ${
+                    idx === 0 ? '#52c41a' : 
+                    idx === dayPlan.attractions.length - 1 ? '#f5222d' : 
+                    '#1890ff'
+                  }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
+                    ${idx + 1}
+                  </span>
+                  <div>
+                    <div style="font-weight: 500;">${item.attraction.name}</div>
+                    <div style="color: #666; font-size: 12px;">${item.attraction.address}</div>
+                    ${item.distance ? `
+                      <div style="color: #1890ff; font-size: 12px;">
+                        到下一站：${formatDistance(item.distance)}
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    element.appendChild(content);
+
+    // 添加统计信息和水印
+    const footer = document.createElement('div');
+    footer.style.position = 'relative';
+    footer.style.borderTop = '1px solid #f0f0f0';
+    footer.style.paddingTop = '12px';
+    footer.style.marginTop = '20px';
+    footer.innerHTML = `
+      <div style="color: #666; font-size: 12px;">
+        总景点数：${itinerary.reduce((sum, day) => sum + day.attractions.length, 0)} 个
+        &nbsp;|&nbsp;
+        生成时间：${moment().format('YYYY-MM-DD HH:mm')}
+      </div>
+      <div style="position: absolute; right: 0; bottom: 0; color: #bfbfbf; font-size: 12px;">
+        由 伴旅 生成
+      </div>
+    `;
+    element.appendChild(footer);
+
+    // 将元素添加到文档中
+    document.body.appendChild(element);
+
+    try {
+      // 生成图片
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        backgroundColor: '#fff',
+        logging: false,
+        useCORS: true
+      });
+
+      // 转换为图片并下载
+      const image = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `${destination}旅行计划-${moment().format('YYYY-MM-DD')}.png`;
+      link.href = image;
+      link.click();
+
+      message.success('行程图片已生成');
+    } catch (error) {
+      console.error('生成图片失败:', error);
+      message.error('生成图片失败，请重试');
+    } finally {
+      // 清理临时元素
+      document.body.removeChild(element);
+    }
+  };
+
+  // 添加生成预览的函数
+  const generatePreview = async () => {
+    const values = form.getFieldsValue();
+    const { destination, dates } = values;
+    
+    // 创建预览元素
+    const element = document.createElement('div');
+    element.style.padding = '20px';
+    element.style.background = '#fff';
+    element.style.width = '800px';
+    element.style.position = 'absolute';
+    element.style.left = '-9999px';
+    
+    // 添加标题和行程信息
+    const header = document.createElement('div');
+    header.style.marginBottom = '20px';
+    header.style.borderBottom = '2px solid #1890ff';
+    header.style.paddingBottom = '10px';
+    header.innerHTML = `
+      <div style="margin-top: 12px; color: #333;">
+        <div style="font-size: 20px; font-weight: 500;">
+          ${destination} 旅行计划
+        </div>
+        <div style="font-size: 14px; color: #666; margin-top: 8px;">
+          出行时间：${dates[0].format('YYYY年MM月DD日')} - ${dates[1].format('YYYY年MM月DD日')}
+          （共 ${dates[1].diff(dates[0], 'days') + 1} 天）
+        </div>
+      </div>
+    `;
+    element.appendChild(header);
+
+    // 添加行程内容
+    const content = document.createElement('div');
+    content.innerHTML = `
+      <div style="font-size: 16px; margin-bottom: 20px;">
+        ${itinerary.map((dayPlan, index) => `
+          <div style="margin-bottom: 15px;">
+            <div style="font-weight: bold; color: #1890ff; margin-bottom: 10px;">
+              第${dayPlan.day}天 (${dayPlan.date})
+            </div>
+            <div style="padding-left: 20px;">
+              ${dayPlan.attractions.map((item, idx) => `
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                  <span style="width: 20px; height: 20px; border-radius: 50%; background: ${
+                    idx === 0 ? '#52c41a' : 
+                    idx === dayPlan.attractions.length - 1 ? '#f5222d' : 
+                    '#1890ff'
+                  }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
+                    ${idx + 1}
+                  </span>
+                  <div>
+                    <div style="font-weight: 500;">${item.attraction.name}</div>
+                    <div style="color: #666; font-size: 12px;">${item.attraction.address}</div>
+                    ${item.distance ? `
+                      <div style="color: #1890ff; font-size: 12px;">
+                        到下一站：${formatDistance(item.distance)}
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    element.appendChild(content);
+
+    // 添加统计信息和水印
+    const footer = document.createElement('div');
+    footer.style.position = 'relative';
+    footer.style.borderTop = '1px solid #f0f0f0';
+    footer.style.paddingTop = '12px';
+    footer.style.marginTop = '20px';
+    footer.innerHTML = `
+      <div style="color: #666; font-size: 12px;">
+        总景点数：${itinerary.reduce((sum, day) => sum + day.attractions.length, 0)} 个
+        &nbsp;|&nbsp;
+        生成时间：${moment().format('YYYY-MM-DD HH:mm')}
+      </div>
+      <div style="position: absolute; right: 0; bottom: 0; color: #bfbfbf; font-size: 12px;">
+        由 伴旅 生成
+      </div>
+    `;
+    element.appendChild(footer);
+
+    // 将元素添加到文档中
+    document.body.appendChild(element);
+
+    try {
+      // 生成预览图片
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        backgroundColor: '#fff',
+        logging: false,
+        useCORS: true
+      });
+
+      // 设置预览图片
+      setPreviewImage(canvas.toDataURL('image/png'));
+    } catch (error) {
+      console.error('生成预览失败:', error);
+      message.error('生成预览失败，请重试');
+    } finally {
+      // 清理临时元素
+      document.body.removeChild(element);
+    }
+  };
+
+  // 在组件挂载时生成预览
+  useEffect(() => {
+    if (shareModalVisible) {
+      generatePreview();
+    }
+  }, [shareModalVisible]);
+
+  // 修改分享模态框
   const ShareModal = () => (
     <Modal
       title="分享行程"
       open={shareModalVisible}
-      onCancel={() => setShareModalVisible(false)}
-      footer={[
-        <Button key="copy" type="primary" onClick={copyToClipboard}>
-          复制链接
-        </Button>,
-        <Button key="close" onClick={() => setShareModalVisible(false)}>
-          关闭
-        </Button>
-      ]}
+      onCancel={() => {
+        setShareModalVisible(false);
+        setPreviewImage(null);  // 清除预览图片
+      }}
+      footer={null}
+      width={500}
     >
-      <div style={{ marginBottom: 16 }}>
-        <p>复制以下链接分享给好友：</p>
-        <Input.TextArea
-          value={shareLink}
-          autoSize={{ minRows: 3, maxRows: 5 }}
-          readOnly
+      <div style={{ padding: '20px 0' }}>
+        <Tabs 
+          defaultActiveKey="link" 
+          centered
+          items={[
+            {
+              key: 'link',
+              label: '链接分享',
+              children: (
+                <div style={{ padding: '20px 0' }}>
+                  <Input.TextArea
+                    value={shareLink}
+                    autoSize={{ minRows: 3, maxRows: 5 }}
+                    readOnly
+                    style={{ marginBottom: '16px' }}
+                  />
+                  <Button 
+                    type="primary" 
+                    block
+                    onClick={copyToClipboard}
+                    icon={<ShareAltOutlined />}
+                  >
+                    复制链接
+                  </Button>
+                  <div style={{ color: '#666', fontSize: '12px', marginTop: '8px', textAlign: 'center' }}>
+                    复制链接发送给好友，即可查看完整行程安排
+                  </div>
+                </div>
+              )
+            },
+            {
+              key: 'image',
+              label: '图片分享',
+              children: (
+                <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                  <div style={{ marginBottom: '20px' }}>
+                    {previewImage ? (
+                      <img 
+                        src={previewImage}
+                        alt="分享预览"
+                        style={{ 
+                          width: '100%',
+                          maxWidth: '400px',
+                          borderRadius: '8px',
+                          border: '1px solid #f0f0f0',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }} 
+                      />
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '200px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#f5f5f5',
+                        borderRadius: '8px'
+                      }}>
+                        <Spin tip="生成预览中..." />
+                      </div>
+                    )}
+                  </div>
+                  <Button 
+                    type="primary" 
+                    block
+                    onClick={generateImage}
+                    icon={<DownloadOutlined />}
+                  >
+                    保存为图片
+                  </Button>
+                  <div style={{ color: '#666', fontSize: '12px', marginTop: '8px' }}>
+                    生成精美的行程图片，包含完整行程信息
+                  </div>
+                </div>
+              )
+            }
+          ]} 
         />
-      </div>
-      <div style={{ color: '#666', fontSize: '12px' }}>
-        <p>提示：打开链接即可查看完整行程安排</p>
       </div>
     </Modal>
   );
