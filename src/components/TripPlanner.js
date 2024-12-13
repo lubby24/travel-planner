@@ -879,182 +879,95 @@ const TripPlanner = () => {
     }
   }, []);
 
-  // 添加生成图片的函数
-  const generateImage = async () => {
-    const values = form.getFieldsValue();
-    const { destination, dates } = values;
-    
-    // 创建预览元素
-    const element = document.createElement('div');
-    element.style.padding = '20px';
-    element.style.background = '#fff';
-    element.style.width = '800px';
-    element.style.position = 'absolute';
-    element.style.left = '-9999px';
-    
-    // 添加标题和行程信息
-    const header = document.createElement('div');
-    header.style.marginBottom = '20px';
-    header.style.borderBottom = '2px solid #1890ff';
-    header.style.paddingBottom = '10px';
-    header.innerHTML = `
-      <div style="margin-top: 12px; color: #333;">
-        <div style="font-size: 20px; font-weight: 500;">
-          ${destination} 旅行计划
-        </div>
-        <div style="font-size: 14px; color: #666; margin-top: 8px;">
-          出行时间：${dates[0].format('YYYY年MM月DD日')} - ${dates[1].format('YYYY年MM月DD日')}
-          （共 ${dates[1].diff(dates[0], 'days') + 1} 天）
-        </div>
-      </div>
-    `;
-    element.appendChild(header);
-
-    // 添加行程内容
-    const content = document.createElement('div');
-    content.innerHTML = `
-      <div style="font-size: 16px; margin-bottom: 20px;">
-        ${itinerary.map((dayPlan, index) => `
-          <div style="margin-bottom: 15px;">
-            <div style="font-weight: bold; color: #1890ff; margin-bottom: 10px;">
-              第${dayPlan.day}天 (${dayPlan.date})
-            </div>
-            <div style="padding-left: 20px;">
-              ${dayPlan.attractions.map((item, idx) => `
-                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                  <span style="width: 20px; height: 20px; border-radius: 50%; background: ${
-                    idx === 0 ? '#52c41a' : 
-                    idx === dayPlan.attractions.length - 1 ? '#f5222d' : 
-                    '#1890ff'
-                  }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
-                    ${idx + 1}
-                  </span>
-                  <div>
-                    <div style="font-weight: 500;">${item.attraction.name}</div>
-                    <div style="color: #666; font-size: 12px;">${item.attraction.address}</div>
-                    ${item.distance ? `
-                      <div style="color: #1890ff; font-size: 12px;">
-                        到下一站：${formatDistance(item.distance)}
-                      </div>
-                    ` : ''}
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-    element.appendChild(content);
-
-    // 添加统计信息和水印
-    const footer = document.createElement('div');
-    footer.style.position = 'relative';
-    footer.style.borderTop = '1px solid #f0f0f0';
-    footer.style.paddingTop = '12px';
-    footer.style.marginTop = '20px';
-    footer.innerHTML = `
-      <div style="color: #666; font-size: 12px;">
-        总景点数：${itinerary.reduce((sum, day) => sum + day.attractions.length, 0)} 个
-        &nbsp;|&nbsp;
-        生成时间：${moment().format('YYYY-MM-DD HH:mm')}
-      </div>
-      <div style="position: absolute; right: 0; bottom: 0; color: #bfbfbf; font-size: 12px;">
-        由 伴旅 生成
-      </div>
-    `;
-    element.appendChild(footer);
-
-    // 将元素添加到文档中
-    document.body.appendChild(element);
-
-    try {
-      // 生成图片
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        backgroundColor: '#fff',
-        logging: false,
-        useCORS: true
-      });
-
-      // 转换为图片并下载
-      const image = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = `${destination}旅行计划-${moment().format('YYYY-MM-DD')}.png`;
-      link.href = image;
-      link.click();
-
-      message.success('行程图片已生成');
-    } catch (error) {
-      console.error('生成图片失败:', error);
-      message.error('生成图片失败，请重试');
-    } finally {
-      // 清理临时元素
-      document.body.removeChild(element);
-    }
-  };
-
-  // 添加生成预览的函数
+  // 修改生成预览的函数
   const generatePreview = async () => {
-    const values = form.getFieldsValue();
-    const { destination, dates } = values;
-    
-    // 创建预览元素
+    // 创建临时元素
     const element = document.createElement('div');
     element.style.padding = '20px';
+    element.style.width = '600px';
     element.style.background = '#fff';
-    element.style.width = '800px';
-    element.style.position = 'absolute';
-    element.style.left = '-9999px';
-    
-    // 添加标题和行程信息
-    const header = document.createElement('div');
-    header.style.marginBottom = '20px';
-    header.style.borderBottom = '2px solid #1890ff';
-    header.style.paddingBottom = '10px';
-    header.innerHTML = `
-      <div style="margin-top: 12px; color: #333;">
-        <div style="font-size: 20px; font-weight: 500;">
-          ${destination} 旅行计划
-        </div>
-        <div style="font-size: 14px; color: #666; margin-top: 8px;">
-          出行时间：${dates[0].format('YYYY年MM月DD日')} - ${dates[1].format('YYYY年MM月DD日')}
-          （共 ${dates[1].diff(dates[0], 'days') + 1} 天）
-        </div>
+    element.style.fontFamily = 'Arial, sans-serif';
+
+    // 添加标题
+    const title = document.createElement('div');
+    title.style.marginBottom = '20px';
+    title.style.textAlign = 'center';
+    title.innerHTML = `
+      <h2 style="margin: 0; color: #1890ff;">${form.getFieldValue('destination')}旅行计划</h2>
+      <div style="color: #666; margin-top: 8px;">
+        ${moment(form.getFieldValue('dates')[0]).format('YYYY-MM-DD')} 至 
+        ${moment(form.getFieldValue('dates')[1]).format('YYYY-MM-DD')}
       </div>
     `;
-    element.appendChild(header);
+    element.appendChild(title);
 
     // 添加行程内容
     const content = document.createElement('div');
     content.innerHTML = `
-      <div style="font-size: 16px; margin-bottom: 20px;">
-        ${itinerary.map((dayPlan, index) => `
-          <div style="margin-bottom: 15px;">
+      <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 16px;">
+        ${itinerary.map(dayPlan => `
+          <div style="margin-bottom: 24px;">
             <div style="font-weight: bold; color: #1890ff; margin-bottom: 10px;">
               第${dayPlan.day}天 (${dayPlan.date})
             </div>
             <div style="padding-left: 20px;">
-              ${dayPlan.attractions.map((item, idx) => `
-                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                  <span style="width: 20px; height: 20px; border-radius: 50%; background: ${
-                    idx === 0 ? '#52c41a' : 
-                    idx === dayPlan.attractions.length - 1 ? '#f5222d' : 
-                    '#1890ff'
-                  }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
-                    ${idx + 1}
-                  </span>
-                  <div>
-                    <div style="font-weight: 500;">${item.attraction.name}</div>
-                    <div style="color: #666; font-size: 12px;">${item.attraction.address}</div>
-                    ${item.distance ? `
-                      <div style="color: #1890ff; font-size: 12px;">
-                        到下一站：${formatDistance(item.distance)}
+              ${dayPlan.attractions.map((item, idx) => {
+                if (item.attraction.type === 'transport') {
+                  // 交通信息的展示
+                  const transportInfo = item.attraction.transportInfo;
+                  return `
+                    <div style="display: flex; align-items: flex-start; margin-bottom: 12px; padding: 8px; background: #f6f0ff; border-radius: 4px;">
+                      <div style="flex: 1;">
+                        <div style="margin-bottom: 4px;">
+                          <span style="background: #722ed1; color: white; padding: 2px 8px; border-radius: 2px; font-size: 12px;">
+                            ${transportInfo.type}
+                          </span>
+                          <span style="margin-left: 8px; font-weight: 500;">
+                            ${transportInfo.number}
+                          </span>
+                        </div>
+                        <div style="font-size: 13px; color: #666; margin: 4px 0;">
+                          ${transportInfo.departurePlace} → ${transportInfo.arrivalPlace}
+                        </div>
+                        <div style="font-size: 13px;">
+                          ${moment(transportInfo.departureTime).format('MM-DD HH:mm')} →
+                          ${moment(transportInfo.arrivalTime).format('MM-DD HH:mm')}
+                          <span style="color: #999; font-size: 12px; margin-left: 8px;">
+                            (${Math.floor(transportInfo.duration / 60)}小时${transportInfo.duration % 60}分钟)
+                          </span>
+                        </div>
+                        ${transportInfo.notes ? `
+                          <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                            备注：${transportInfo.notes}
+                          </div>
+                        ` : ''}
                       </div>
-                    ` : ''}
-                  </div>
-                </div>
-              `).join('')}
+                    </div>
+                  `;
+                } else {
+                  // 景点信息的展示
+                  return `
+                    <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                      <span style="width: 20px; height: 20px; border-radius: 50%; background: ${
+                        idx === 0 ? '#52c41a' : 
+                        idx === dayPlan.attractions.length - 1 ? '#f5222d' : 
+                        '#1890ff'
+                      }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
+                        ${idx + 1}
+                      </span>
+                      <div>
+                        <div style="font-weight: 500;">${item.attraction.name}</div>
+                        <div style="color: #666; font-size: 12px;">${item.attraction.address}</div>
+                        ${item.distance ? `
+                          <div style="color: #1890ff; font-size: 12px;">
+                            到下一站：${formatDistance(item.distance)}
+                          </div>
+                        ` : ''}
+                      </div>
+                    </div>
+                  `;
+                }
+              }).join('')}
             </div>
           </div>
         `).join('')}
@@ -1070,7 +983,7 @@ const TripPlanner = () => {
     footer.style.marginTop = '20px';
     footer.innerHTML = `
       <div style="color: #666; font-size: 12px;">
-        总景点数：${itinerary.reduce((sum, day) => sum + day.attractions.length, 0)} 个
+        总行程数：${itinerary.reduce((sum, day) => sum + day.attractions.length, 0)} 项
         &nbsp;|&nbsp;
         生成时间：${moment().format('YYYY-MM-DD HH:mm')}
       </div>
@@ -1657,6 +1570,24 @@ const TripPlanner = () => {
         ))}
       </Timeline>
     );
+  };
+
+  // 添加生成图片的函数
+  const generateImage = async () => {
+    try {
+      await generatePreview();
+      if (previewImage) {
+        // 创建下载链接
+        const link = document.createElement('a');
+        link.download = `${form.getFieldValue('destination')}旅行计划-${moment().format('YYYY-MM-DD')}.png`;
+        link.href = previewImage;
+        link.click();
+        message.success('行程图片已生成');
+      }
+    } catch (error) {
+      console.error('生成图片失败:', error);
+      message.error('生成图片失败，请重试');
+    }
   };
 
   // 在组件返回的 JSX 中使用 renderItinerary
