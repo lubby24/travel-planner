@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin, Tabs } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin, Tabs, Radio, Dropdown } from 'antd';
 import { Map, MapApiLoaderHOC, Marker, NavigationControl, ZoomControl } from 'react-bmapgl';
 import moment from 'moment';
-import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined, DownloadOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined, DownloadOutlined, DownOutlined, CarOutlined } from '@ant-design/icons';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import html2canvas from 'html2canvas';
 
@@ -46,6 +46,9 @@ const TripPlanner = () => {
 
   // 添加新的状态
   const [hasShownDragTip, setHasShownDragTip] = useState(false);
+
+  // 在 TripPlanner 组件内添加新的状态
+  const [transportModalVisible, setTransportModalVisible] = useState(false);
 
   useEffect(() => {
     if (window.BMapGL && !map) {
@@ -217,7 +220,7 @@ const TripPlanner = () => {
       });
     });
 
-    // 创建路线规划数组
+    // 创建路��规划数组
     const routePromises = [];
     
     // 为相邻景点创建路线规划
@@ -386,9 +389,13 @@ const TripPlanner = () => {
   };
 
   // 修改处理函数
-  const handleAddAttraction = (dayIndex) => {
+  const handleAddAttraction = (dayIndex, type = 'place') => {
     setCurrentDayIndex(dayIndex);
-    setIsModalVisible(true);
+    if (type === 'transport') {
+      setTransportModalVisible(true);
+    } else {
+      setIsModalVisible(true);
+    }
   };
 
   const handleModalOk = (selectedAttraction) => {
@@ -396,6 +403,188 @@ const TripPlanner = () => {
       handleAddToDay(selectedAttraction, currentDayIndex);
     }
     setIsModalVisible(false);
+  };
+
+  // 修改处理交通信息的函数
+  const handleTransportModalOk = (transportInfo) => {
+    if (transportInfo && currentDayIndex !== null) {
+      const newItinerary = [...itinerary];
+      const dayPlan = newItinerary[currentDayIndex];
+      
+      // 将 moment 对象转换为 ISO 字符串存储
+      const processedTransportInfo = {
+        ...transportInfo,
+        departureTime: transportInfo.departureTime.toISOString(),
+        arrivalTime: transportInfo.arrivalTime.toISOString(),
+        duration: transportInfo.duration
+      };
+      
+      dayPlan.attractions.push({
+        attraction: {
+          id: `transport-${Date.now()}`,
+          name: `${transportInfo.type} ${transportInfo.number}`,
+          type: 'transport',
+          transportInfo: processedTransportInfo,
+          location: {
+            lng: 0,
+            lat: 0
+          }
+        },
+        distance: null,
+        arranged: true
+      });
+      
+      setItinerary(newItinerary);
+    }
+    setTransportModalVisible(false);
+  };
+
+  // 添加交通信息模态框组件
+  const TransportModal = () => {
+    const [form] = Form.useForm();
+    const [transportType, setTransportType] = useState('flight');
+
+    const handleSubmit = () => {
+      form.validateFields().then(values => {
+        const transportInfo = {
+          ...values,
+          type: transportType === 'flight' ? '航班' : '列车',
+          departureTime: values.departureTime,
+          arrivalTime: values.arrivalTime,
+          duration: values.arrivalTime.diff(values.departureTime, 'minutes')
+        };
+        
+        handleTransportModalOk(transportInfo);
+        form.resetFields();
+      });
+    };
+
+    return (
+      <Modal
+        title="添加交通信息"
+        open={transportModalVisible}
+        onCancel={() => {
+          setTransportModalVisible(false);
+          form.resetFields();
+        }}
+        onOk={handleSubmit}
+        width={600}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+        >
+          <div style={{ marginBottom: 24 }}>
+            <Radio.Group 
+              value={transportType}
+              onChange={e => setTransportType(e.target.value)}
+              buttonStyle="solid"
+            >
+              <Radio.Button value="flight">航班</Radio.Button>
+              <Radio.Button value="train">列车</Radio.Button>
+            </Radio.Group>
+          </div>
+
+          <Form.Item
+            label={transportType === 'flight' ? "航班号" : "车次"}
+            name="number"
+            rules={[{ required: true, message: '请输入编号' }]}
+          >
+            <Input placeholder={transportType === 'flight' ? "如：MU2501" : "如：G1234"} />
+          </Form.Item>
+
+          <div style={{ display: 'flex', gap: 16 }}>
+            <Form.Item
+              label="出发地"
+              name="departurePlace"
+              style={{ flex: 1 }}
+              rules={[{ required: true, message: '请输入出发地' }]}
+            >
+              <Input placeholder={transportType === 'flight' ? "如：虹桥机场T2" : "如：上海虹桥站"} />
+            </Form.Item>
+
+            <Form.Item
+              label="到达地"
+              name="arrivalPlace"
+              style={{ flex: 1 }}
+              rules={[{ required: true, message: '请输入到达地' }]}
+            >
+              <Input placeholder={transportType === 'flight' ? "如：首都机场T2" : "如：北京南站"} />
+            </Form.Item>
+          </div>
+
+          <div style={{ display: 'flex', gap: 16 }}>
+            <Form.Item
+              label="出发时间"
+              name="departureTime"
+              style={{ flex: 1 }}
+              rules={[{ required: true, message: '请选择出发时间' }]}
+            >
+              <DatePicker 
+                showTime={{ 
+                  format: 'HH:mm',
+                  defaultValue: moment('00:00', 'HH:mm')
+                }}
+                format="YYYY-MM-DD HH:mm"
+                style={{ width: '100%' }}
+                disabledDate={(current) => {
+                  return current && current < moment().startOf('day');
+                }}
+              />
+            </Form.Item>
+
+            <Form.Item
+              label="到达时间"
+              name="arrivalTime"
+              style={{ flex: 1 }}
+              rules={[
+                { required: true, message: '请选择到达时间' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    const departureTime = getFieldValue('departureTime');
+                    if (!value || !departureTime) {
+                      return Promise.resolve();
+                    }
+                    // 使用 unix 时间戳进行比较，确保考虑到日期和时间
+                    if (value.unix() <= departureTime.unix()) {
+                      return Promise.reject(new Error('到达时间必须晚于出发时间'));
+                    }
+                    return Promise.resolve();
+                  },
+                }),
+              ]}
+            >
+              <DatePicker 
+                showTime={{ 
+                  format: 'HH:mm',
+                  defaultValue: moment('00:00', 'HH:mm')
+                }}
+                format="YYYY-MM-DD HH:mm"
+                style={{ width: '100%' }}
+                disabledDate={(current) => {
+                  if (!current) return false;
+                  // 只禁用早于今天的日期
+                  return current < moment().startOf('day');
+                }}
+                // 添加 onChange 处理
+                onChange={(value) => {
+                  // 当选择新的到达时间时，重新触发表单验证
+                  form.validateFields(['arrivalTime'])
+                    .catch(() => {});
+                }}
+              />
+            </Form.Item>
+          </div>
+
+          <Form.Item
+            label="备注"
+            name="notes"
+          >
+            <Input.TextArea placeholder="添加备注信息（选填）" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    );
   };
 
   // 修改模态框组件，添加地址搜索功能
@@ -796,7 +985,7 @@ const TripPlanner = () => {
 
       message.success('行程图片已生成');
     } catch (error) {
-      console.error('生成图片失败:', error);
+      console.error('��成图片失败:', error);
       message.error('生成图片失败，请重试');
     } finally {
       // 清理临时元素
@@ -1191,222 +1380,251 @@ const TripPlanner = () => {
     map.setZoom(15);
   };
 
-  // 修改景点列表渲染
+  // 修改行程卡片的额外操作按钮
+  const renderCardExtra = (dayIndex, dayPlan) => (
+    <Space>
+      <Button 
+        type="link" 
+        onClick={() => drawRoute(dayPlan.attractions.map(item => item.attraction))}
+      >
+        查看路线
+      </Button>
+      <Dropdown
+        menu={{
+          items: [
+            {
+              key: 'place',
+              label: '添加地点',
+              onClick: () => handleAddAttraction(dayIndex, 'place')
+            },
+            {
+              key: 'transport',
+              label: '添加交通',
+              onClick: () => handleAddAttraction(dayIndex, 'transport')
+            }
+          ]
+        }}
+      >
+        <Button type="link">
+          添加 <DownOutlined />
+        </Button>
+      </Dropdown>
+    </Space>
+  );
+
+  // 修改渲染行程项的函数
+  const renderAttractionItem = (item, index, dayPlan, dayIndex) => {
+    const isTransport = item.attraction.type === 'transport';
+    const { transportInfo } = item.attraction;
+
+    return (
+      <Timeline.Item 
+        key={index}
+        dot={isTransport ? 
+          <CarOutlined style={{ fontSize: '16px' }} /> : 
+          null
+        }
+        color={isTransport ? 'purple' : 
+          index === 0 ? 'green' : 
+          index === dayPlan.attractions.length - 1 ? 'red' : 
+          'blue'
+        }
+      >
+        <div 
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            cursor: 'move',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            backgroundColor: isTransport ? '#f6f0ff' : 
+              (highlightedAttraction === item.attraction.id ? '#e6f7ff' : 'transparent'),
+            border: isTransport ? '1px solid #d3adf7' :
+              (highlightedAttraction === item.attraction.id ? '1px solid #91d5ff' : '1px solid transparent'),
+            transition: 'all 0.3s',
+            position: 'relative'
+          }}
+          draggable
+          onDragStart={(e) => {
+            const dragData = {
+              ...item.attraction,
+              fromDay: dayIndex,
+              fromIndex: index
+            };
+            e.dataTransfer.setData('attraction', JSON.stringify(dragData));
+            e.currentTarget.style.opacity = '0.5';
+          }}
+          onDragEnd={(e) => {
+            e.currentTarget.style.opacity = '1';
+            setDragOverDayIndex(null);
+            setDragOverPosition(null);
+          }}
+          onDragOver={(e) => handleDragOver(e, dayIndex)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => {
+            e.stopPropagation();
+            handleDrop(e, dayIndex);
+          }}
+          onMouseEnter={() => setHighlightedAttraction(item.attraction.id)}
+          onMouseLeave={() => setHighlightedAttraction(null)}
+        >
+          {dragOverDayIndex === dayIndex && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                height: '2px',
+                backgroundColor: '#1890ff',
+                top: dragOverPosition === 'before' ? 0 : '100%',
+                transform: 'translateY(-50%)',
+                transition: 'all 0.2s'
+              }}
+            />
+          )}
+          
+          {isTransport ? (
+            <div style={{ flex: 1 }}>
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Space>
+                  <Tag color="purple">{transportInfo.type}</Tag>
+                  <span style={{ fontWeight: 500 }}>{transportInfo.number}</span>
+                </Space>
+                <Space style={{ fontSize: '13px', color: '#666' }}>
+                  <span>{transportInfo.departurePlace}</span>
+                  <ArrowRightOutlined style={{ fontSize: '12px' }} />
+                  <span>{transportInfo.arrivalPlace}</span>
+                </Space>
+                <Space style={{ fontSize: '13px' }}>
+                  <span>{moment(transportInfo.departureTime).format('MM-DD HH:mm')}</span>
+                  <span style={{ color: '#999' }}>→</span>
+                  <span>{moment(transportInfo.arrivalTime).format('MM-DD HH:mm')}</span>
+                  <span style={{ color: '#999', fontSize: '12px' }}>
+                    ({Math.floor(transportInfo.duration / 60)}小时{transportInfo.duration % 60}分钟)
+                  </span>
+                </Space>
+                {transportInfo.notes && (
+                  <div style={{ fontSize: '12px', color: '#999' }}>
+                    备注：{transportInfo.notes}
+                  </div>
+                )}
+              </Space>
+            </div>
+          ) : (
+            <Space style={{ flex: 1 }}>
+              <span 
+                style={{ 
+                  cursor: 'pointer', 
+                  color: '#1890ff',
+                  fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
+                }}
+                onClick={() => {
+                  showAttractionInfo(item.attraction);
+                  setHighlightedAttraction(item.attraction.id);
+                }}
+              >
+                {item.attraction.name}
+              </span>
+              {item.distance && (
+                <span style={{ color: '#999', fontSize: '12px' }}>
+                  → {formatDistance(item.distance)}
+                </span>
+              )}
+            </Space>
+          )}
+
+          <Button 
+            type="text" 
+            danger 
+            size="small"
+            onClick={() => handleDayAttractionRemove(dayIndex, index)}
+          >
+            删除
+          </Button>
+        </div>
+      </Timeline.Item>
+    );
+  };
+
+  // 修改行程卡片渲染部分
   const renderItinerary = () => {
     if (itinerary.length === 0) return null;
 
     return (
-      <Card 
-        title="行程安排" 
-        bordered={false}
-        extra={
-          <Button 
-            type="primary" 
-            icon={<ShareAltOutlined />}
-            onClick={generateShareLink}
+      <Timeline>
+        {itinerary.map((dayPlan, dayIndex) => (
+          <Timeline.Item 
+            key={dayIndex}
+            dot={
+              <div 
+                style={{
+                  background: '#1890ff',
+                  borderRadius: '50%',
+                  width: '16px',
+                  height: '16px',
+                  lineHeight: '16px',
+                  textAlign: 'center',
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              >
+                {dayPlan.day}
+              </div>
+            }
           >
-            分享行程
-          </Button>
-        }
-        bodyStyle={{ 
-          maxHeight: 'calc(100vh - 100px)',
-          overflow: 'auto',
-          padding: '16px'
-        }}
-      >
-        <Timeline>
-          {itinerary.map((dayPlan, dayIndex) => (
-            <Timeline.Item 
-              key={dayIndex}
-              dot={
+            <Card 
+              size="small" 
+              title={`第${dayPlan.day}天 (${dayPlan.date})`}
+              extra={renderCardExtra(dayIndex, dayPlan)}
+              style={{ 
+                backgroundColor: dayPlan.attractions.length === 0 ? '#fafafa' : '#fff'
+              }}
+              bodyStyle={{
+                minHeight: '100px'
+              }}
+              onDragOver={(e) => handleDragOver(e, dayIndex)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, dayIndex)}
+            >
+              {dayPlan.attractions.length === 0 ? (
                 <div 
-                  style={{
-                    background: '#1890ff',
-                    borderRadius: '50%',
-                    width: '16px',
-                    height: '16px',
-                    lineHeight: '16px',
-                    textAlign: 'center',
-                    color: 'white',
-                    fontSize: '12px'
+                  style={{ 
+                    height: '100px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    border: dragOverDayIndex === dayIndex ? 
+                      '2px solid #1890ff' : 
+                      '2px dashed #d9d9d9',
+                    borderRadius: '4px',
+                    color: dragOverDayIndex === dayIndex ? '#1890ff' : '#999',
+                    backgroundColor: dragOverDayIndex === dayIndex ? 
+                      'rgba(24,144,255,0.1)' : 
+                      'transparent',
+                    transition: 'all 0.3s'
                   }}
                 >
-                  {dayPlan.day}
+                  {dragOverDayIndex === dayIndex ? 
+                    '放在这里' : 
+                    '将景点拖拽到这里'
+                  }
                 </div>
-              }
-            >
-              <Card 
-                size="small" 
-                title={`第${dayPlan.day}天 (${dayPlan.date})`}
-                extra={
-                  <Space>
-                    <Button 
-                      type="link" 
-                      onClick={() => drawRoute(dayPlan.attractions.map(item => item.attraction))}
-                    >
-                      查看路线
-                    </Button>
-                    <Button 
-                      type="link"
-                      onClick={() => handleAddAttraction(dayIndex)}
-                    >
-                      添加地址
-                    </Button>
-                  </Space>
-                }
-                style={{ 
-                  backgroundColor: dayPlan.attractions.length === 0 ? '#fafafa' : '#fff'
-                }}
-                bodyStyle={{
-                  minHeight: '100px'
-                }}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, dayIndex)}
-              >
-                {dayPlan.attractions.length === 0 ? (
-                  <div 
-                    style={{ 
-                      height: '100px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      border: dragOverDayIndex === dayIndex ? 
-                        '2px solid #1890ff' : 
-                        '2px dashed #d9d9d9',
-                      borderRadius: '4px',
-                      color: dragOverDayIndex === dayIndex ? '#1890ff' : '#999',
-                      backgroundColor: dragOverDayIndex === dayIndex ? 
-                        'rgba(24,144,255,0.1)' : 
-                        'transparent',
-                      transition: 'all 0.3s'
-                    }}
-                  >
-                    {dragOverDayIndex === dayIndex ? 
-                      '放在这里' : 
-                      '将景点拖拽到这里'
-                    }
-                  </div>
-                ) : (
-                  <Timeline>
-                    {dayPlan.attractions.map((item, index) => (
-                      <Timeline.Item 
-                        key={index}
-                        color={index === 0 ? 'green' : index === dayPlan.attractions.length - 1 ? 'red' : 'blue'}
-                      >
-                        <div 
-                          style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            cursor: 'move',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            backgroundColor: highlightedAttraction === item.attraction.id ? '#e6f7ff' : 'transparent',
-                            border: highlightedAttraction === item.attraction.id ? '1px solid #91d5ff' : '1px solid transparent',
-                            transition: 'all 0.3s',
-                            position: 'relative'
-                          }}
-                          draggable
-                          onDragStart={(e) => {
-                            const dragData = {
-                              ...item.attraction,
-                              fromDay: dayIndex,
-                              fromIndex: index
-                            };
-                            e.dataTransfer.setData('attraction', JSON.stringify(dragData));
-                            e.currentTarget.style.opacity = '0.5';
-                          }}
-                          onDragEnd={(e) => {
-                            e.currentTarget.style.opacity = '1';
-                            setDragOverDayIndex(null);
-                            setDragOverPosition(null);
-                          }}
-                          onDragOver={(e) => handleDragOver(e, dayIndex)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => {
-                            e.stopPropagation();
-                            handleDrop(e, dayIndex);
-                          }}
-                          onMouseEnter={() => setHighlightedAttraction(item.attraction.id)}
-                          onMouseLeave={() => setHighlightedAttraction(null)}
-                        >
-                          {/* 添加拖拽指示器 */}
-                          {dragOverDayIndex === dayIndex && (
-                            <div
-                              style={{
-                                position: 'absolute',
-                                left: 0,
-                                right: 0,
-                                height: '2px',
-                                backgroundColor: '#1890ff',
-                                top: dragOverPosition === 'before' ? 0 : '100%',
-                                transform: 'translateY(-50%)',
-                                transition: 'all 0.2s'
-                              }}
-                            />
-                          )}
-                          <Space direction="vertical" size={0}>
-                            <Space>
-                              <span 
-                                style={{ 
-                                  cursor: 'pointer', 
-                                  color: '#1890ff',
-                                  fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
-                                }}
-                                onClick={() => {
-                                  showAttractionInfo(item.attraction);
-                                  setHighlightedAttraction(item.attraction.id);
-                                }}
-                              >
-                                {item.attraction.name}
-                              </span>
-                              <span style={{ color: '#999', fontSize: '12px' }}>
-                                {item.attraction.address}
-                              </span>
-                            </Space>
-                            {item.distance && (
-                              <Button
-                                type="link"
-                                size="small"
-                                style={{ padding: 0, height: 'auto' }}
-                                onClick={() => handleNavigate(
-                                  item.attraction.location,
-                                  dayPlan.attractions[index + 1].attraction.location
-                                )}
-                              >
-                                <span style={{ color: '#1890ff', fontSize: '12px' }}>
-                                  到下一景点距离: {formatDistance(item.distance)}
-                                  <ArrowRightOutlined style={{ marginLeft: '4px' }} />
-                                </span>
-                              </Button>
-                            )}
-                          </Space>
-                          <Space>
-                            <Button 
-                              type="text" 
-                              danger 
-                              size="small"
-                              onClick={() => handleDayAttractionRemove(dayIndex, index)}
-                            >
-                              删除
-                            </Button>
-                          </Space>
-                        </div>
-                      </Timeline.Item>
-                    ))}
-                  </Timeline>
-                )}
-              </Card>
-            </Timeline.Item>
-          ))}
-        </Timeline>
-        <AddAttractionModal />
-        <ShareModal />
-      </Card>
+              ) : (
+                <Timeline>
+                  {dayPlan.attractions.map((item, index) => 
+                    renderAttractionItem(item, index, dayPlan, dayIndex)
+                  )}
+                </Timeline>
+              )}
+            </Card>
+          </Timeline.Item>
+        ))}
+      </Timeline>
     );
   };
 
+  // 在组件返回的 JSX 中使用 renderItinerary
   return (
     <div style={{ padding: '20px', background: '#f0f2f5', minHeight: '100vh' }}>
       <div style={{ display: 'flex', gap: '20px' }}>
@@ -1650,195 +1868,7 @@ const TripPlanner = () => {
                 padding: '16px'
               }}
             >
-              <Timeline>
-                {itinerary.map((dayPlan, dayIndex) => (
-                  <Timeline.Item 
-                    key={dayIndex}
-                    dot={
-                      <div 
-                        style={{
-                          background: '#1890ff',
-                          borderRadius: '50%',
-                          width: '16px',
-                          height: '16px',
-                          lineHeight: '16px',
-                          textAlign: 'center',
-                          color: 'white',
-                          fontSize: '12px'
-                        }}
-                      >
-                        {dayPlan.day}
-                      </div>
-                    }
-                  >
-                    <Card 
-                      size="small" 
-                      title={`第${dayPlan.day}天 (${dayPlan.date})`}
-                      extra={
-                        <Space>
-                          <Button 
-                            type="link" 
-                            onClick={() => drawRoute(dayPlan.attractions.map(item => item.attraction))}
-                          >
-                            查看路线
-                          </Button>
-                          <Button 
-                            type="link"
-                            onClick={() => handleAddAttraction(dayIndex)}
-                          >
-                            添加地址
-                          </Button>
-                        </Space>
-                      }
-                      style={{ 
-                        backgroundColor: dayPlan.attractions.length === 0 ? '#fafafa' : '#fff'
-                      }}
-                      bodyStyle={{
-                        minHeight: '100px'
-                      }}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, dayIndex)}
-                    >
-                      {dayPlan.attractions.length === 0 ? (
-                        <div 
-                          style={{ 
-                            height: '100px', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            border: dragOverDayIndex === dayIndex ? 
-                              '2px solid #1890ff' : 
-                              '2px dashed #d9d9d9',
-                            borderRadius: '4px',
-                            color: dragOverDayIndex === dayIndex ? '#1890ff' : '#999',
-                            backgroundColor: dragOverDayIndex === dayIndex ? 
-                              'rgba(24,144,255,0.1)' : 
-                              'transparent',
-                            transition: 'all 0.3s'
-                          }}
-                        >
-                          {dragOverDayIndex === dayIndex ? 
-                            '放在这里' : 
-                            '将景点拖拽到这里'
-                          }
-                        </div>
-                      ) : (
-                        <Timeline>
-                          {dayPlan.attractions.map((item, index) => (
-                            <Timeline.Item 
-                              key={index}
-                              color={index === 0 ? 'green' : index === dayPlan.attractions.length - 1 ? 'red' : 'blue'}
-                            >
-                              <div 
-                                style={{ 
-                                  display: 'flex', 
-                                  justifyContent: 'space-between', 
-                                  alignItems: 'center',
-                                  cursor: 'move',
-                                  padding: '8px 12px',
-                                  borderRadius: '4px',
-                                  backgroundColor: highlightedAttraction === item.attraction.id ? '#e6f7ff' : 'transparent',
-                                  border: highlightedAttraction === item.attraction.id ? '1px solid #91d5ff' : '1px solid transparent',
-                                  transition: 'all 0.3s',
-                                  position: 'relative'
-                                }}
-                                draggable
-                                onDragStart={(e) => {
-                                  const dragData = {
-                                    ...item.attraction,
-                                    fromDay: dayIndex,
-                                    fromIndex: index
-                                  };
-                                  e.dataTransfer.setData('attraction', JSON.stringify(dragData));
-                                  e.currentTarget.style.opacity = '0.5';
-                                }}
-                                onDragEnd={(e) => {
-                                  e.currentTarget.style.opacity = '1';
-                                  setDragOverDayIndex(null);
-                                  setDragOverPosition(null);
-                                }}
-                                onDragOver={(e) => handleDragOver(e, dayIndex)}
-                                onDragLeave={handleDragLeave}
-                                onDrop={(e) => {
-                                  e.stopPropagation();
-                                  handleDrop(e, dayIndex);
-                                }}
-                                onMouseEnter={() => setHighlightedAttraction(item.attraction.id)}
-                                onMouseLeave={() => setHighlightedAttraction(null)}
-                              >
-                                {/* 添加拖拽指示器 */}
-                                {dragOverDayIndex === dayIndex && (
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      left: 0,
-                                      right: 0,
-                                      height: '2px',
-                                      backgroundColor: '#1890ff',
-                                      top: dragOverPosition === 'before' ? 0 : '100%',
-                                      transform: 'translateY(-50%)',
-                                      transition: 'all 0.2s'
-                                    }}
-                                  />
-                                )}
-                                <Space direction="vertical" size={0}>
-                                  <Space>
-                                    <span 
-                                      style={{ 
-                                        cursor: 'pointer', 
-                                        color: '#1890ff',
-                                        fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
-                                      }}
-                                      onClick={() => {
-                                        showAttractionInfo(item.attraction);
-                                        setHighlightedAttraction(item.attraction.id);
-                                      }}
-                                    >
-                                      {item.attraction.name}
-                                    </span>
-                                    <span style={{ color: '#999', fontSize: '12px' }}>
-                                      {item.attraction.address}
-                                    </span>
-                                  </Space>
-                                  {item.distance && (
-                                    <Button
-                                      type="link"
-                                      size="small"
-                                      style={{ padding: 0, height: 'auto' }}
-                                      onClick={() => handleNavigate(
-                                        item.attraction.location,
-                                        dayPlan.attractions[index + 1].attraction.location
-                                      )}
-                                    >
-                                      <span style={{ color: '#1890ff', fontSize: '12px' }}>
-                                        到下一景点距离: {formatDistance(item.distance)}
-                                        <ArrowRightOutlined style={{ marginLeft: '4px' }} />
-                                      </span>
-                                    </Button>
-                                  )}
-                                </Space>
-                                <Space>
-                                  <Button 
-                                    type="text" 
-                                    danger 
-                                    size="small"
-                                    onClick={() => handleDayAttractionRemove(dayIndex, index)}
-                                  >
-                                    删除
-                                  </Button>
-                                </Space>
-                              </div>
-                            </Timeline.Item>
-                          ))}
-                        </Timeline>
-                      )}
-                    </Card>
-                  </Timeline.Item>
-                ))}
-              </Timeline>
-              <AddAttractionModal />
-              <ShareModal />
+              {renderItinerary()}
             </Card>
           ) : (
             <Card 
@@ -1852,6 +1882,9 @@ const TripPlanner = () => {
           )}
         </div>
       </div>
+      <AddAttractionModal />
+      <TransportModal />
+      <ShareModal />
     </div>
   );
 };
