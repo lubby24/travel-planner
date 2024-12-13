@@ -1318,7 +1318,7 @@ const TripPlanner = () => {
     // 添加到新的日期
     newItinerary[toDayIndex].attractions.push(movedAttraction);
     
-    // 重新计算两个���期的距离
+    // 重新计算两个日期的距离
     recalculateDistances(newItinerary[fromDayIndex]);
     recalculateDistances(newItinerary[toDayIndex]);
     
@@ -1607,14 +1607,17 @@ const TripPlanner = () => {
     );
   };
 
-  // 添加生成图片的函数
+  // 修改生成图片的函数
   const generateImage = async () => {
     try {
       await generatePreview();
       if (previewImage) {
-        // 创建下载链接
+        // 创建下载链接，使用自定义标题或目的地作为文件名
         const link = document.createElement('a');
-        link.download = `${form.getFieldValue('destination')}旅行计划-${moment().format('YYYY-MM-DD')}.png`;
+        const fileName = `${customTitle || form.getFieldValue('destination')}.png`;
+        // 替换文件名中的非法字符
+        const safeFileName = fileName.replace(/[<>:"/\\|?*]/g, '-');
+        link.download = safeFileName;
         link.href = previewImage;
         link.click();
         message.success('行程图片已生成');
