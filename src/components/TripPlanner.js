@@ -165,11 +165,16 @@ const TripPlanner = () => {
   const drawRoute = (dayAttractions) => {
     if (!map || dayAttractions.length < 2) return;
 
+    // 过滤出非交通类型的景点
+    const attractions = dayAttractions.filter(attraction => !attraction.type || attraction.type !== 'transport');
+    
+    if (attractions.length < 2) return;
+
     // 清除现有路线
     map.clearOverlays();
 
     // 为每个景点添加标记和标签
-    dayAttractions.forEach((attraction, index) => {
+    attractions.forEach((attraction, index) => {
       const point = new window.BMapGL.Point(attraction.location.lng, attraction.location.lat);
       
       // 创建标记
@@ -187,7 +192,7 @@ const TripPlanner = () => {
       label.setStyle({
         color: '#fff',
         backgroundColor: index === 0 ? '#52c41a' : 
-                        index === dayAttractions.length - 1 ? '#f5222d' : '#1890ff',
+                        index === attractions.length - 1 ? '#f5222d' : '#1890ff',
         border: 'none',
         padding: '5px 10px',
         borderRadius: '3px',
@@ -202,11 +207,11 @@ const TripPlanner = () => {
           <div style="padding: 10px;">
             <h4 style="margin: 0 0 5px 0;">${attraction.name}</h4>
             <p style="margin: 0; color: #666;">${attraction.address}</p>
-            ${index < dayAttractions.length - 1 ? `
+            ${index < attractions.length - 1 ? `
               <p style="margin: 5px 0 0 0; color: #1890ff;">
                 到下一站：${formatDistance(calculateDistance(
                   attraction.location,
-                  dayAttractions[index + 1].location
+                  attractions[index + 1].location
                 ))}
               </p>
             ` : ''}
@@ -224,14 +229,13 @@ const TripPlanner = () => {
     const routePromises = [];
     
     // 为相邻景点创建路线规划
-    for (let i = 0; i < dayAttractions.length - 1; i++) {
+    for (let i = 0; i < attractions.length - 1; i++) {
       const promise = new Promise((resolve) => {
         const driving = new window.BMapGL.DrivingRoute(map, {
           renderOptions: {
             map: map,
             autoViewport: false,
             enableDragging: true,
-            // 设置路线样式
             strokeColor: '#1890ff',
             strokeWeight: 6,
             strokeOpacity: 0.8
@@ -243,12 +247,9 @@ const TripPlanner = () => {
           }
         });
 
-        const start = dayAttractions[i];
-        const end = dayAttractions[i + 1];
-
         driving.search(
-          new window.BMapGL.Point(start.location.lng, start.location.lat),
-          new window.BMapGL.Point(end.location.lng, end.location.lat)
+          new window.BMapGL.Point(attractions[i].location.lng, attractions[i].location.lat),
+          new window.BMapGL.Point(attractions[i + 1].location.lng, attractions[i + 1].location.lat)
         );
       });
 
@@ -257,23 +258,23 @@ const TripPlanner = () => {
 
     // 等待所有路线规划完成后调整视野
     Promise.all(routePromises).then(() => {
-      const points = dayAttractions.map(
+      const points = attractions.map(
         attraction => new window.BMapGL.Point(attraction.location.lng, attraction.location.lat)
       );
       const view = map.getViewport(points);
       map.centerAndZoom(view.center, view.zoom);
 
       // 添加行程信息面板
-      const totalDistance = dayAttractions.reduce((total, curr, index) => {
+      const totalDistance = attractions.reduce((total, curr, index) => {
         if (index === 0) return 0;
-        const prev = dayAttractions[index - 1];
+        const prev = attractions[index - 1];
         return total + calculateDistance(prev.location, curr.location);
       }, 0);
 
       const panel = new window.BMapGL.InfoWindow(`
         <div style="padding: 10px;">
           <h4 style="margin: 0 0 10px 0;">行程信息</h4>
-          <p style="margin: 5px 0;">总景点数：${dayAttractions.length}个</p>
+          <p style="margin: 5px 0;">总景点数：${attractions.length}个</p>
           <p style="margin: 5px 0;">总距离：${formatDistance(totalDistance)}</p>
         </div>
       `, {
@@ -1322,12 +1323,33 @@ const TripPlanner = () => {
   const recalculateDistances = (dayPlan) => {
     if (!dayPlan.attractions) return;
     
+    // 过滤出非交通类型的景点
+    const attractions = dayPlan.attractions.filter(item => !item.attraction.type || item.attraction.type !== 'transport');
+    
     dayPlan.attractions.forEach((item, index) => {
-      if (index < dayPlan.attractions.length - 1) {
-        const nextAttraction = dayPlan.attractions[index + 1];
+      // 如果当前项是交通信息，则不计算距离
+      if (item.attraction.type === 'transport') {
+        item.distance = null;
+        return;
+      }
+      
+      // 找到下一个非交通类型的景点
+      let nextAttractionIndex = index + 1;
+      while (nextAttractionIndex < dayPlan.attractions.length) {
+        if (!dayPlan.attractions[nextAttractionIndex].attraction.type || 
+            dayPlan.attractions[nextAttractionIndex].attraction.type !== 'transport') {
+          break;
+        }
+        nextAttractionIndex++;
+      }
+      
+      // 如果找到了下一个景点，计算距离
+      if (nextAttractionIndex < dayPlan.attractions.length && 
+          (!dayPlan.attractions[nextAttractionIndex].attraction.type || 
+           dayPlan.attractions[nextAttractionIndex].attraction.type !== 'transport')) {
         item.distance = calculateDistance(
           item.attraction.location,
-          nextAttraction.attraction.location
+          dayPlan.attractions[nextAttractionIndex].attraction.location
         );
       } else {
         item.distance = null;
