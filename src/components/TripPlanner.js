@@ -387,24 +387,6 @@ const TripPlanner = () => {
 
   // 修改处理函数
   const handleAddAttraction = (dayIndex) => {
-    // 获取所有已经安排到行程中的景点ID
-    const arrangedAttractionIds = new Set(
-      itinerary.flatMap(day => 
-        day.attractions.map(item => item.attraction.id)
-      )
-    );
-    
-    // 筛选出已选择但还未安排的景点
-    const available = selectedAttractions.filter(
-      attraction => !arrangedAttractionIds.has(attraction.id)
-    );
-    
-    if (available.length === 0) {
-      message.info('没有待安排的景点，请先在左侧添加景点');
-      return;
-    }
-
-    setAvailableAttractions(available);
     setCurrentDayIndex(dayIndex);
     setIsModalVisible(true);
   };
@@ -412,10 +394,6 @@ const TripPlanner = () => {
   const handleModalOk = (selectedAttraction) => {
     if (selectedAttraction && currentDayIndex !== null) {
       handleAddToDay(selectedAttraction, currentDayIndex);
-      // 更新选中的景点列表（如果还没有选中）
-      if (!selectedAttractions.some(a => a.id === selectedAttraction.id)) {
-        setSelectedAttractions([...selectedAttractions, selectedAttraction]);
-      }
     }
     setIsModalVisible(false);
   };
