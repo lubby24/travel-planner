@@ -220,7 +220,7 @@ const TripPlanner = () => {
       });
     });
 
-    // 创建路��规划数组
+    // 创建路线规划数组
     const routePromises = [];
     
     // 为相邻景点创建路线规划
@@ -985,7 +985,7 @@ const TripPlanner = () => {
 
       message.success('行程图片已生成');
     } catch (error) {
-      console.error('��成图片失败:', error);
+      console.error('生成图片失败:', error);
       message.error('生成图片失败，请重试');
     } finally {
       // 清理临时元素
@@ -1512,24 +1512,37 @@ const TripPlanner = () => {
               </Space>
             </div>
           ) : (
-            <Space style={{ flex: 1 }}>
-              <span 
-                style={{ 
-                  cursor: 'pointer', 
-                  color: '#1890ff',
-                  fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
-                }}
-                onClick={() => {
-                  showAttractionInfo(item.attraction);
-                  setHighlightedAttraction(item.attraction.id);
-                }}
-              >
-                {item.attraction.name}
-              </span>
-              {item.distance && (
-                <span style={{ color: '#999', fontSize: '12px' }}>
-                  → {formatDistance(item.distance)}
+            <Space direction="vertical" size={0} style={{ flex: 1 }}>
+              <Space>
+                <span 
+                  style={{ 
+                    cursor: 'pointer', 
+                    color: '#1890ff',
+                    fontWeight: highlightedAttraction === item.attraction.id ? 500 : 'normal'
+                  }}
+                  onClick={() => {
+                    showAttractionInfo(item.attraction);
+                    setHighlightedAttraction(item.attraction.id);
+                  }}
+                >
+                  {item.attraction.name}
                 </span>
+              </Space>
+              {item.distance && (
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto' }}
+                  onClick={() => handleNavigate(
+                    item.attraction.location,
+                    dayPlan.attractions[index + 1].attraction.location
+                  )}
+                >
+                  <span style={{ color: '#1890ff', fontSize: '12px' }}>
+                    到下一景点距离: {formatDistance(item.distance)}
+                    <ArrowRightOutlined style={{ marginLeft: '4px' }} />
+                  </span>
+                </Button>
               )}
             </Space>
           )}
