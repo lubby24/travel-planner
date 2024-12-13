@@ -891,22 +891,26 @@ const TripPlanner = () => {
   const generatePreview = async () => {
     // 创建临时元素
     const element = document.createElement('div');
-    element.style.padding = '20px';
-    element.style.width = '600px';
+    element.style.padding = '32px';
+    element.style.width = '800px';
     element.style.background = '#fff';
     element.style.fontFamily = 'Arial, sans-serif';
+    element.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)';
+    element.style.borderRadius = '12px';
 
     // 添加标题
     const title = document.createElement('div');
-    title.style.marginBottom = '20px';
+    title.style.marginBottom = '32px';
     title.style.textAlign = 'center';
     title.innerHTML = `
-      <h2 style="margin: 0; color: #1890ff;">
-        ${customTitle || form.getFieldValue('destination')}
-      </h2>
-      <div style="color: #666; margin-top: 8px;">
-        ${moment(form.getFieldValue('dates')[0]).format('YYYY-MM-DD')} 至 
-        ${moment(form.getFieldValue('dates')[1]).format('YYYY-MM-DD')}
+      <div style="margin-bottom: 16px;">
+        <h1 style="margin: 0; color: #1890ff; font-size: 28px;">
+          ${customTitle || form.getFieldValue('destination')}
+        </h1>
+        <div style="color: #666; margin-top: 12px; font-size: 16px;">
+          ${itinerary[0].date} 至 ${itinerary[itinerary.length - 1].date}
+          （共 ${itinerary.length} 天）
+        </div>
       </div>
     `;
     element.appendChild(title);
@@ -914,90 +918,111 @@ const TripPlanner = () => {
     // 添加行程内容
     const content = document.createElement('div');
     content.innerHTML = `
-      <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 16px;">
-        ${itinerary.map(dayPlan => `
-          <div style="margin-bottom: 24px;">
-            <div style="font-weight: bold; color: #1890ff; margin-bottom: 10px;">
-              第${dayPlan.day}天 (${dayPlan.date})
-            </div>
-            <div style="padding-left: 20px;">
-              ${dayPlan.attractions.map((item, idx) => {
-                if (item.attraction.type === 'transport') {
-                  // 交通信息的展示
-                  const transportInfo = item.attraction.transportInfo;
-                  return `
-                    <div style="display: flex; align-items: flex-start; margin-bottom: 12px; padding: 8px; background: #f6f0ff; border-radius: 4px;">
-                      <div style="flex: 1;">
-                        <div style="margin-bottom: 4px;">
-                          <span style="background: #722ed1; color: white; padding: 2px 8px; border-radius: 2px; font-size: 12px;">
-                            ${transportInfo.type}
-                          </span>
-                          <span style="margin-left: 8px; font-weight: 500;">
-                            ${transportInfo.number}
-                          </span>
-                        </div>
-                        <div style="font-size: 13px; color: #666; margin: 4px 0;">
-                          ${transportInfo.departurePlace} → ${transportInfo.arrivalPlace}
-                        </div>
-                        <div style="font-size: 13px;">
-                          ${moment(transportInfo.departureTime).format('MM-DD HH:mm')} →
-                          ${moment(transportInfo.arrivalTime).format('MM-DD HH:mm')}
-                          <span style="color: #999; font-size: 12px; margin-left: 8px;">
-                            (${Math.floor(transportInfo.duration / 60)}小时${transportInfo.duration % 60}分钟)
-                          </span>
-                        </div>
-                        ${transportInfo.notes ? `
-                          <div style="font-size: 12px; color: #999; margin-top: 4px;">
-                            备注：${transportInfo.notes}
+      <div style="border: 1px solid #f0f0f0; border-radius: 12px; padding: 24px; background: #fafafa;">
+        ${itinerary.map(dayPlan => {
+          // 计算当天的非交通类型项目数量
+          let spotIndex = 0;
+          
+          return `
+            <div style="margin-bottom: 32px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+              <div style="font-size: 18px; font-weight: bold; color: #1890ff; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #f0f0f0;">
+                第${dayPlan.day}天 · ${dayPlan.date}
+              </div>
+              <div style="padding-left: 24px;">
+                ${dayPlan.attractions.map((item, idx) => {
+                  if (item.attraction.type === 'transport') {
+                    // 交通信息的展示部分保持不变
+                    const transportInfo = item.attraction.transportInfo;
+                    return `
+                      <div style="display: flex; align-items: flex-start; margin-bottom: 16px; padding: 12px; background: #f6f0ff; border-radius: 8px; border: 1px solid #d3adf7;">
+                        <div style="flex: 1;">
+                          <div style="margin-bottom: 8px;">
+                            <span style="background: #722ed1; color: white; padding: 3px 10px; border-radius: 4px; font-size: 13px;">
+                              ${transportInfo.type}
+                            </span>
+                            <span style="margin-left: 12px; font-weight: 500; font-size: 15px;">
+                              ${transportInfo.number}
+                            </span>
                           </div>
-                        ` : ''}
-                      </div>
-                    </div>
-                  `;
-                } else {
-                  // 景点信息的展示
-                  return `
-                    <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                      <span style="width: 20px; height: 20px; border-radius: 50%; background: ${
-                        idx === 0 ? '#52c41a' : 
-                        idx === dayPlan.attractions.length - 1 ? '#f5222d' : 
-                        '#1890ff'
-                      }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
-                        ${idx + 1}
-                      </span>
-                      <div>
-                        <div style="font-weight: 500;">${item.attraction.name}</div>
-                        <div style="color: #666; font-size: 12px;">${item.attraction.address}</div>
-                        ${item.distance ? `
-                          <div style="color: #1890ff; font-size: 12px;">
-                            到下一站：${formatDistance(item.distance)}
+                          <div style="display: flex; align-items: center; margin: 12px 0;">
+                            <div style="flex: 1;">
+                              <div style="color: #666; font-size: 13px;">出发</div>
+                              <div style="font-size: 15px; margin-top: 4px;">${transportInfo.departurePlace}</div>
+                              <div style="color: #1890ff; margin-top: 4px;">${moment(transportInfo.departureTime).format('MM月DD日 HH:mm')}</div>
+                            </div>
+                            <div style="margin: 0 20px; color: #999;">
+                              <div style="font-size: 12px; text-align: center; margin-bottom: 4px;">
+                                ${Math.floor(transportInfo.duration / 60)}小时${transportInfo.duration % 60}分钟
+                              </div>
+                              →
+                            </div>
+                            <div style="flex: 1;">
+                              <div style="color: #666; font-size: 13px;">到达</div>
+                              <div style="font-size: 15px; margin-top: 4px;">${transportInfo.arrivalPlace}</div>
+                              <div style="color: #1890ff; margin-top: 4px;">${moment(transportInfo.arrivalTime).format('MM月DD日 HH:mm')}</div>
+                            </div>
                           </div>
-                        ` : ''}
+                          ${transportInfo.notes ? `
+                            <div style="font-size: 13px; color: #666; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #d3adf7;">
+                              备注：${transportInfo.notes}
+                            </div>
+                          ` : ''}
+                        </div>
                       </div>
-                    </div>
-                  `;
-                }
-              }).join('')}
+                    `;
+                  } else {
+                    // 景点信息的展示，添加地址信息
+                    spotIndex++;
+                    const totalSpots = dayPlan.attractions.filter(a => !a.attraction.type || a.attraction.type !== 'transport').length;
+                    return `
+                      <div style="display: flex; align-items: flex-start; margin-bottom: 16px;">
+                        <span style="min-width: 24px; height: 24px; border-radius: 50%; background: ${
+                          spotIndex === 1 ? '#52c41a' : 
+                          spotIndex === totalSpots ? '#f5222d' : 
+                          '#1890ff'
+                        }; color: white; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 14px;">
+                          ${spotIndex}
+                        </span>
+                        <div style="flex: 1;">
+                          <div style="font-size: 16px; font-weight: 500; color: #262626;">
+                            ${item.attraction.name}
+                          </div>
+                          <div style="color: #666; font-size: 13px; margin-top: 4px;">
+                            📍 ${item.attraction.address}
+                          </div>
+                          ${item.distance ? `
+                            <div style="color: #1890ff; font-size: 13px; margin-top: 4px;">
+                              到下一站：${formatDistance(item.distance)}
+                            </div>
+                          ` : ''}
+                        </div>
+                      </div>
+                    `;
+                  }
+                }).join('')}
+              </div>
             </div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `;
     element.appendChild(content);
 
     // 添加统计信息和水印
     const footer = document.createElement('div');
-    footer.style.position = 'relative';
+    footer.style.marginTop = '24px';
+    footer.style.padding = '16px 24px';
     footer.style.borderTop = '1px solid #f0f0f0';
-    footer.style.paddingTop = '12px';
-    footer.style.marginTop = '20px';
+    footer.style.display = 'flex';
+    footer.style.justifyContent = 'space-between';
+    footer.style.alignItems = 'center';
     footer.innerHTML = `
-      <div style="color: #666; font-size: 12px;">
+      <div style="color: #666; font-size: 13px;">
         总行程数：${itinerary.reduce((sum, day) => sum + day.attractions.length, 0)} 项
         &nbsp;|&nbsp;
-        生成时间：${moment().format('YYYY-MM-DD HH:mm')}
+        生成时间：${moment().format('YYYY年MM月DD日 HH:mm')}
       </div>
-      <div style="position: absolute; right: 0; bottom: 0; color: #bfbfbf; font-size: 12px;">
+      <div style="color: #bfbfbf; font-size: 13px;">
         由 伴旅 生成
       </div>
     `;
@@ -1293,7 +1318,7 @@ const TripPlanner = () => {
     // 添加到新的日期
     newItinerary[toDayIndex].attractions.push(movedAttraction);
     
-    // 重新计算两个日期的距离
+    // 重新计算两个���期的距离
     recalculateDistances(newItinerary[fromDayIndex]);
     recalculateDistances(newItinerary[toDayIndex]);
     
