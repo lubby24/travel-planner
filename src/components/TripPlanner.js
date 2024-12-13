@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin, Tabs, Radio, Dropdown } from 'antd';
 import { Map, MapApiLoaderHOC, Marker, NavigationControl, ZoomControl } from 'react-bmapgl';
 import moment from 'moment';
-import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined, DownloadOutlined, DownOutlined, CarOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined, DownloadOutlined, DownOutlined, CarOutlined, EditOutlined } from '@ant-design/icons';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import html2canvas from 'html2canvas';
 
@@ -49,6 +49,10 @@ const TripPlanner = () => {
 
   // 在 TripPlanner 组件内添加新的状态
   const [transportModalVisible, setTransportModalVisible] = useState(false);
+
+  // 添加新的状态用于存储自定义标题
+  const [customTitle, setCustomTitle] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
 
   useEffect(() => {
     if (window.BMapGL && !map) {
@@ -841,7 +845,8 @@ const TripPlanner = () => {
   const generateShareLink = () => {
     const shareData = {
       itinerary,
-      selectedAttractions
+      selectedAttractions,
+      customTitle
     };
     
     // 将行程数据编码为 URL 参数
@@ -872,6 +877,9 @@ const TripPlanner = () => {
         const decodedData = JSON.parse(decodeURIComponent(sharedPlan));
         setItinerary(decodedData.itinerary);
         setSelectedAttractions(decodedData.selectedAttractions);
+        if (decodedData.customTitle) {
+          setCustomTitle(decodedData.customTitle);
+        }
       } catch (error) {
         console.error('Failed to load shared plan:', error);
         message.error('加载分享的行程失败');
@@ -893,7 +901,9 @@ const TripPlanner = () => {
     title.style.marginBottom = '20px';
     title.style.textAlign = 'center';
     title.innerHTML = `
-      <h2 style="margin: 0; color: #1890ff;">${form.getFieldValue('destination')}旅行计划</h2>
+      <h2 style="margin: 0; color: #1890ff;">
+        ${customTitle || form.getFieldValue('destination')}
+      </h2>
       <div style="color: #666; margin-top: 8px;">
         ${moment(form.getFieldValue('dates')[0]).format('YYYY-MM-DD')} 至 
         ${moment(form.getFieldValue('dates')[1]).format('YYYY-MM-DD')}
@@ -1590,6 +1600,40 @@ const TripPlanner = () => {
     }
   };
 
+  // 添加标题编辑组件
+  const TitleEditor = ({ defaultTitle }) => {
+    const [title, setTitle] = useState(defaultTitle || '行程安排');
+
+    const handleSave = () => {
+      setCustomTitle(title);
+      setIsEditingTitle(false);
+    };
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Input
+          size="small"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          onPressEnter={handleSave}
+          style={{ width: '200px' }}
+          autoFocus
+        />
+        <Space>
+          <Button size="small" type="primary" onClick={handleSave}>
+            确定
+          </Button>
+          <Button 
+            size="small" 
+            onClick={() => setIsEditingTitle(false)}
+          >
+            取消
+          </Button>
+        </Space>
+      </div>
+    );
+  };
+
   // 在组件返回的 JSX 中使用 renderItinerary
   return (
     <div style={{ padding: '20px', background: '#f0f2f5', minHeight: '100vh' }}>
@@ -1817,7 +1861,29 @@ const TripPlanner = () => {
         <div style={{ width: '30%' }}>
           {itinerary.length > 0 ? (
             <Card 
-              title="行程安排" 
+              title={
+                isEditingTitle ? (
+                  <TitleEditor defaultTitle={customTitle || '行程安排'} />
+                ) : (
+                  <div 
+                    style={{ 
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onClick={() => setIsEditingTitle(true)}
+                  >
+                    {customTitle || '行程安排'}
+                    <Button 
+                      type="text" 
+                      size="small"
+                      icon={<EditOutlined />}
+                      style={{ opacity: 0.6 }}
+                    />
+                  </div>
+                )
+              }
               bordered={false}
               extra={
                 <Button 
