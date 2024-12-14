@@ -317,14 +317,15 @@ const TripPlanner = () => {
       return;
     }
 
-    const startDate = dates[0];
+    // 确保使用正确的 moment 对象和日期格式
+    const startDate = dates[0];  // DatePicker 已经返回 moment 对象
     const endDate = dates[1];
     const days = endDate.diff(startDate, 'days') + 1;
     
     // 创建空的行程数组
     const newItinerary = Array.from({ length: days }, (_, index) => ({
       day: index + 1,
-      date: moment(startDate).add(index, 'days').format('YYYY-MM-DD'),
+      date: startDate.clone().add(index, 'days').format('YYYY-MM-DD'),  // 使用统一的日期格式
       attractions: []
     }));
     
