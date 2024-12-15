@@ -752,7 +752,7 @@ const TripPlanner = () => {
 
         <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
           <Input.Search
-            placeholder="搜索地��（如：车站、机场、酒店等）"
+            placeholder="搜索地址（如：车站、机场、酒店等）"
             value={searchValue}
             onChange={e => setSearchValue(e.target.value)}
             onSearch={handleAddressSearch}
@@ -1442,7 +1442,7 @@ const TripPlanner = () => {
             },
             {
               key: 'transport',
-              label: '��加交通',
+              label: '添加交通',
               onClick: () => handleAddAttraction(dayIndex, 'transport')
             }
           ]
