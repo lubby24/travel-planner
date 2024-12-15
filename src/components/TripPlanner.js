@@ -1,8 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin, Tabs, Radio, Dropdown } from 'antd';
+import { Card, Form, Input, DatePicker, Button, Timeline, Select, List, Tag, Space, Modal, message, Spin, Tabs, Radio, Dropdown, Drawer } from 'antd';
 import { Map, MapApiLoaderHOC, Marker, NavigationControl, ZoomControl } from 'react-bmapgl';
 import moment from 'moment';
-import { ArrowRightOutlined, ShareAltOutlined, CloseOutlined, DownloadOutlined, DownOutlined, CarOutlined, EditOutlined } from '@ant-design/icons';
+import { 
+  ArrowRightOutlined, 
+  ShareAltOutlined, 
+  CloseOutlined, 
+  DownloadOutlined, 
+  DownOutlined, 
+  CarOutlined, 
+  EditOutlined, 
+  SaveOutlined, 
+  FolderOutlined 
+} from '@ant-design/icons';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import html2canvas from 'html2canvas';
 
@@ -53,6 +63,12 @@ const TripPlanner = () => {
   // 添加新的状态用于存储自定义标题
   const [customTitle, setCustomTitle] = useState('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+  // 添加新的状态
+  const [savedTrips, setSavedTrips] = useState([]);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveTripName, setSaveTripName] = useState('');
+  const [visible, setVisible] = useState(false);  // 添加visible状态
 
   useEffect(() => {
     if (window.BMapGL && !map) {
@@ -844,51 +860,14 @@ const TripPlanner = () => {
 
   // 修改生成分享链接的函数
   const generateShareLink = () => {
-    // 处理日期格式，确保可以正确序列化
-    const shareData = {
-      itinerary: itinerary.map(day => ({
-        ...day,
-        // 保持日期格式统一
-        date: day.date,
-        attractions: day.attractions.map(item => ({
-          ...item,
-          attraction: {
-            ...item.attraction,
-            transportInfo: item.attraction.transportInfo ? {
-              ...item.attraction.transportInfo,
-              // 将 moment 对象转换为 ISO 字符串
-              departureTime: item.attraction.transportInfo.departureTime ? 
-                moment(item.attraction.transportInfo.departureTime).toISOString() : null,
-              arrivalTime: item.attraction.transportInfo.arrivalTime ? 
-                moment(item.attraction.transportInfo.arrivalTime).toISOString() : null
-            } : null
-          }
-        }))
-      })),
-      selectedAttractions,
-      customTitle
-    };
-    
-    // 将行程数据编码为 URL 参数
-    const encodedData = encodeURIComponent(JSON.stringify(shareData));
-    const link = `${window.location.origin}${window.location.pathname}?plan=${encodedData}`;
-    setShareLink(link);
-    setShareModalVisible(true);
-  };
-
-  // 修改加载分享行程的逻辑
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const sharedPlan = urlParams.get('plan');
-    
-    if (sharedPlan) {
-      try {
-        const decodedData = JSON.parse(decodeURIComponent(sharedPlan));
-        
-        // 处理行程数据，恢复日期和时间格式
-        const processedItinerary = decodedData.itinerary.map(day => ({
+    try {
+      // 生成唯一的分享ID
+      const shareId = `share_${Date.now()}`;
+      
+      // 准备要分享的数据
+      const shareData = {
+        itinerary: itinerary.map(day => ({
           ...day,
-          // 保持日期格式统一
           date: day.date,
           attractions: day.attractions.map(item => ({
             ...item,
@@ -896,7 +875,62 @@ const TripPlanner = () => {
               ...item.attraction,
               transportInfo: item.attraction.transportInfo ? {
                 ...item.attraction.transportInfo,
-                // 将 ISO 字符串转回 moment 对象
+                departureTime: item.attraction.transportInfo.departureTime ? 
+                  moment(item.attraction.transportInfo.departureTime).toISOString() : null,
+                arrivalTime: item.attraction.transportInfo.arrivalTime ? 
+                  moment(item.attraction.transportInfo.arrivalTime).toISOString() : null
+              } : null
+            }
+          }))
+        })),
+        selectedAttractions,
+        customTitle
+      };
+      
+      // 将数据存储到 localStorage
+      localStorage.setItem(shareId, JSON.stringify(shareData));
+      
+      // 生成更短的分享链接
+      const link = `${window.location.origin}${window.location.pathname}?share=${shareId}`;
+      setShareLink(link);
+      setShareModalVisible(true);
+      
+      // 设置数据过期时间（7天后自动删除）
+      setTimeout(() => {
+        localStorage.removeItem(shareId);
+      }, 7 * 24 * 60 * 60 * 1000);
+      
+    } catch (error) {
+      console.error('Generate share link error:', error);
+      message.error('生成分享链接失败，请重试');
+    }
+  };
+
+  // 修改加载分享行程的逻辑
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareId = urlParams.get('share');
+    
+    if (shareId) {
+      try {
+        // 从 localStorage 获取分享数据
+        const shareDataStr = localStorage.getItem(shareId);
+        if (!shareDataStr) {
+          throw new Error('分享的行程已过期或不存在');
+        }
+        
+        const shareData = JSON.parse(shareDataStr);
+        
+        // 处理行程数据，恢复日期和时间格式
+        const processedItinerary = shareData.itinerary.map(day => ({
+          ...day,
+          date: day.date,
+          attractions: day.attractions.map(item => ({
+            ...item,
+            attraction: {
+              ...item.attraction,
+              transportInfo: item.attraction.transportInfo ? {
+                ...item.attraction.transportInfo,
                 departureTime: item.attraction.transportInfo.departureTime ? 
                   moment(item.attraction.transportInfo.departureTime) : null,
                 arrivalTime: item.attraction.transportInfo.arrivalTime ? 
@@ -907,15 +941,21 @@ const TripPlanner = () => {
         }));
 
         setItinerary(processedItinerary);
-        setSelectedAttractions(decodedData.selectedAttractions);
-        if (decodedData.customTitle) {
-          setCustomTitle(decodedData.customTitle);
+        setSelectedAttractions(shareData.selectedAttractions);
+        if (shareData.customTitle) {
+          setCustomTitle(shareData.customTitle);
         }
         
         message.success('行程加载成功');
+        
+        // 清除 URL 参数
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
       } catch (error) {
-        console.error('Failed to load shared plan:', error);
-        message.error('加载分享的行程失败，链接可能已失效');
+        console.error('Load shared plan error:', error);
+        message.error(error.message || '加载分享的行程失败');
+        // 清除 URL 参数
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
   }, []);
@@ -1402,7 +1442,7 @@ const TripPlanner = () => {
             },
             {
               key: 'transport',
-              label: '添加交通',
+              label: '��加交通',
               onClick: () => handleAddAttraction(dayIndex, 'transport')
             }
           ]
@@ -1706,6 +1746,209 @@ const TripPlanner = () => {
       });
   };
 
+  // 添加保存行程的函数
+  const handleSaveTrip = () => {
+    if (!saveTripName.trim()) {
+      message.warning('请输入行程名称');
+      return;
+    }
+
+    try {
+      // 获取已保存的行程
+      const existingTrips = JSON.parse(localStorage.getItem('savedTrips') || '[]');
+      
+      // 准备要保存的行程数据
+      const tripData = {
+        id: Date.now(),
+        name: saveTripName,
+        date: moment().format('YYYY-MM-DD HH:mm:ss'),
+        data: {
+          itinerary,
+          selectedAttractions,
+          customTitle,
+          destination: form.getFieldValue('destination'),
+          dates: form.getFieldValue('dates').map(date => date.format('YYYY-MM-DD'))
+        }
+      };
+
+      // 添加新行程
+      const newTrips = [tripData, ...existingTrips];
+      localStorage.setItem('savedTrips', JSON.stringify(newTrips));
+      
+      setSavedTrips(newTrips);
+      setSaveModalVisible(false);
+      setSaveTripName('');
+      message.success('行程保存成功');
+    } catch (error) {
+      console.error('Save trip error:', error);
+      message.error('保存失败，请重试');
+    }
+  };
+
+  // 添加加载已保存行程的函数
+  const loadSavedTrips = () => {
+    try {
+      const trips = JSON.parse(localStorage.getItem('savedTrips') || '[]');
+      setSavedTrips(trips);
+    } catch (error) {
+      console.error('Load saved trips error:', error);
+      message.error('加载已保存的行程失败');
+    }
+  };
+
+  // 添加删除已保存行程的函数
+  const handleDeleteTrip = (tripId) => {
+    try {
+      const newTrips = savedTrips.filter(trip => trip.id !== tripId);
+      localStorage.setItem('savedTrips', JSON.stringify(newTrips));
+      setSavedTrips(newTrips);
+      message.success('行程删除成功');
+    } catch (error) {
+      console.error('Delete trip error:', error);
+      message.error('删除失败，请重试');
+    }
+  };
+
+  // 修改恢复已保存行程的函数
+  const handleLoadTrip = (trip) => {
+    try {
+      // 处理行程数据，恢复日期和时间格式
+      const processedItinerary = trip.data.itinerary.map(day => ({
+        ...day,
+        attractions: day.attractions.map(item => ({
+          ...item,
+          attraction: {
+            ...item.attraction,
+            transportInfo: item.attraction.transportInfo ? {
+              ...item.attraction.transportInfo,
+              departureTime: item.attraction.transportInfo.departureTime ? 
+                moment(item.attraction.transportInfo.departureTime) : null,
+              arrivalTime: item.attraction.transportInfo.arrivalTime ? 
+                moment(item.attraction.transportInfo.arrivalTime) : null
+            } : null
+          }
+        }))
+      }));
+
+      setItinerary(processedItinerary);
+      setSelectedAttractions(trip.data.selectedAttractions);
+      if (trip.data.customTitle) {
+        setCustomTitle(trip.data.customTitle);
+      }
+      form.setFieldsValue({
+        destination: trip.data.destination,
+        dates: trip.data.dates.map(date => moment(date))
+      });
+      message.success('行程加载成功');
+    } catch (error) {
+      console.error('Load trip error:', error);
+      message.error('加载失败，请重试');
+    }
+  };
+
+  // 在组件挂载时加载已保存的行程
+  useEffect(() => {
+    loadSavedTrips();
+  }, []);
+
+  // 添加保存行程的模态框组件
+  const SaveTripModal = () => (
+    <Modal
+      title="保存行程"
+      open={saveModalVisible}
+      onOk={handleSaveTrip}
+      onCancel={() => {
+        setSaveModalVisible(false);
+        setSaveTripName('');
+      }}
+    >
+      <Form layout="vertical">
+        <Form.Item 
+          label="行程名称"
+          required
+          help="给这次行程起个名字吧"
+        >
+          <Input
+            value={saveTripName}
+            onChange={e => setSaveTripName(e.target.value)}
+            placeholder="例如：五一上海三日游"
+            maxLength={50}
+          />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+
+  // 添加已保存行程的抽屉组件
+  const SavedTripsDrawer = () => {
+    const [visible, setVisible] = useState(false);
+
+    return (
+      <>
+        <Button 
+          onClick={() => setVisible(true)}
+          icon={<FolderOutlined />}
+        >
+          已保存行程
+        </Button>
+        <Drawer
+          title="已保存的行程"
+          placement="right"
+          onClose={() => setVisible(false)}
+          open={visible}
+          width={400}
+        >
+          <List
+            dataSource={savedTrips}
+            renderItem={trip => (
+              <List.Item
+                actions={[
+                  <Button 
+                    type="link" 
+                    onClick={() => {
+                      handleLoadTrip(trip);
+                      setVisible(false);  // 加载后自动关闭抽屉
+                    }}
+                  >
+                    加载
+                  </Button>,
+                  <Button 
+                    type="link" 
+                    danger
+                    onClick={() => {
+                      Modal.confirm({
+                        title: '确定要删除这个行程吗？',
+                        content: '删除后将无法恢复',
+                        onOk: () => handleDeleteTrip(trip.id)
+                      });
+                    }}
+                  >
+                    删除
+                  </Button>
+                ]}
+              >
+                <List.Item.Meta
+                  title={trip.name}
+                  description={
+                    <Space direction="vertical" size={0}>
+                      <div>{trip.data.destination}</div>
+                      <div style={{ color: '#999', fontSize: '12px' }}>
+                        保存于 {trip.date}
+                      </div>
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
+            locale={{
+              emptyText: '还没有保存的行程'
+            }}
+          />
+        </Drawer>
+      </>
+    );
+  };
+
   // 在组件返回的 JSX 中使用 renderItinerary
   return (
     <div style={{ padding: '20px', background: '#f0f2f5', minHeight: '100vh' }}>
@@ -1797,6 +2040,15 @@ const TripPlanner = () => {
                   }}
                 >
                   生成行程
+                </Button>
+              </Form.Item>
+              <Form.Item>
+                <Button 
+                  block
+                  onClick={() => setVisible(true)}
+                  icon={<FolderOutlined />}
+                >
+                  已保存行程
                 </Button>
               </Form.Item>
             </Form>
@@ -1934,40 +2186,52 @@ const TripPlanner = () => {
           {itinerary.length > 0 ? (
             <Card 
               title={
-                isEditingTitle ? (
-                  <TitleEditor defaultTitle={customTitle || '行程安排'} />
-                ) : (
-                  <div 
-                    style={{ 
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                    onClick={() => setIsEditingTitle(true)}
-                  >
-                    {customTitle || '行程安排'}
-                    <Button 
-                      type="text" 
-                      size="small"
-                      icon={<EditOutlined />}
-                      style={{ opacity: 0.6 }}
-                    />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {isEditingTitle ? (
+                      <TitleEditor defaultTitle={customTitle || '行程安排'} />
+                    ) : (
+                      <div 
+                        style={{ 
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                        onClick={() => setIsEditingTitle(true)}
+                      >
+                        {customTitle || '行程安排'}
+                        <Button 
+                          type="text" 
+                          size="small"
+                          icon={<EditOutlined />}
+                          style={{ opacity: 0.6 }}
+                        />
+                      </div>
+                    )}
                   </div>
-                )
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #f0f0f0', paddingTop: '16px' }}>
+                    <Space>
+                      <Button 
+                        onClick={() => setSaveModalVisible(true)}
+                        icon={<SaveOutlined />}
+                      >
+                        保存行程
+                      </Button>
+                      <Button 
+                        type="primary" 
+                        icon={<ShareAltOutlined />}
+                        onClick={generateShareLink}
+                      >
+                        分享行程
+                      </Button>
+                    </Space>
+                  </div>
+                </div>
               }
               bordered={false}
-              extra={
-                <Button 
-                  type="primary" 
-                  icon={<ShareAltOutlined />}
-                  onClick={generateShareLink}
-                >
-                  分享行程
-                </Button>
-              }
               bodyStyle={{ 
-                maxHeight: 'calc(100vh - 100px)',
+                maxHeight: 'calc(100vh - 140px)',
                 overflow: 'auto',
                 padding: '16px'
               }}
@@ -1989,6 +2253,61 @@ const TripPlanner = () => {
       <AddAttractionModal />
       <TransportModal />
       <ShareModal />
+      <SaveTripModal />
+      <Drawer
+        title="已保存的行程"
+        placement="right"
+        onClose={() => setVisible(false)}
+        open={visible}
+        width={400}
+      >
+        <List
+          dataSource={savedTrips}
+          renderItem={trip => (
+            <List.Item
+              actions={[
+                <Button 
+                  type="link" 
+                  onClick={() => {
+                    handleLoadTrip(trip);
+                    setVisible(false);
+                  }}
+                >
+                  加载
+                </Button>,
+                <Button 
+                  type="link" 
+                  danger
+                  onClick={() => {
+                    Modal.confirm({
+                      title: '确定要删除这个行程吗？',
+                      content: '删除后将无法恢复',
+                      onOk: () => handleDeleteTrip(trip.id)
+                    });
+                  }}
+                >
+                  删除
+                </Button>
+              ]}
+            >
+              <List.Item.Meta
+                title={trip.name}
+                description={
+                  <Space direction="vertical" size={0}>
+                    <div>{trip.data.destination}</div>
+                    <div style={{ color: '#999', fontSize: '12px' }}>
+                      保存于 {trip.date}
+                    </div>
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+          locale={{
+            emptyText: '还没有保存的行程'
+          }}
+        />
+      </Drawer>
     </div>
   );
 };
