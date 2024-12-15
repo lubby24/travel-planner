@@ -32,7 +32,7 @@ function App() {
               letterSpacing: '1px'
             }}
           >
-            伴旅
+            伴旅出行
           </Title>
           <Title 
             level={5} 

@@ -1096,7 +1096,7 @@ const TripPlanner = () => {
         生成时间：${moment().format('YYYY年MM月DD日 HH:mm')}
       </div>
       <div style="color: #bfbfbf; font-size: 13px;">
-        由 伴旅 生成
+        由 伴旅出行 生成
       </div>
     `;
     element.appendChild(footer);
