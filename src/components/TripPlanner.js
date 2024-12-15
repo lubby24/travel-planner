@@ -842,10 +842,29 @@ const TripPlanner = () => {
     );
   };
 
-  // 生成分享链接
+  // 修改生成分享链接的函数
   const generateShareLink = () => {
+    // 处理日期格式，确保可以正确序列化
     const shareData = {
-      itinerary,
+      itinerary: itinerary.map(day => ({
+        ...day,
+        // 保持日期格式统一
+        date: day.date,
+        attractions: day.attractions.map(item => ({
+          ...item,
+          attraction: {
+            ...item.attraction,
+            transportInfo: item.attraction.transportInfo ? {
+              ...item.attraction.transportInfo,
+              // 将 moment 对象转换为 ISO 字符串
+              departureTime: item.attraction.transportInfo.departureTime ? 
+                moment(item.attraction.transportInfo.departureTime).toISOString() : null,
+              arrivalTime: item.attraction.transportInfo.arrivalTime ? 
+                moment(item.attraction.transportInfo.arrivalTime).toISOString() : null
+            } : null
+          }
+        }))
+      })),
       selectedAttractions,
       customTitle
     };
@@ -857,18 +876,7 @@ const TripPlanner = () => {
     setShareModalVisible(true);
   };
 
-  // 复制链接到剪贴板
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(shareLink)
-      .then(() => {
-        message.success('链接已复制到剪贴板');
-      })
-      .catch(() => {
-        message.error('复制失败，请手动复制');
-      });
-  };
-
-  // 从 URL 加载分享的行程
+  // 修改加载分享行程的逻辑
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const sharedPlan = urlParams.get('plan');
@@ -876,14 +884,38 @@ const TripPlanner = () => {
     if (sharedPlan) {
       try {
         const decodedData = JSON.parse(decodeURIComponent(sharedPlan));
-        setItinerary(decodedData.itinerary);
+        
+        // 处理行程数据，恢复日期和时间格式
+        const processedItinerary = decodedData.itinerary.map(day => ({
+          ...day,
+          // 保持日期格式统一
+          date: day.date,
+          attractions: day.attractions.map(item => ({
+            ...item,
+            attraction: {
+              ...item.attraction,
+              transportInfo: item.attraction.transportInfo ? {
+                ...item.attraction.transportInfo,
+                // 将 ISO 字符串转回 moment 对象
+                departureTime: item.attraction.transportInfo.departureTime ? 
+                  moment(item.attraction.transportInfo.departureTime) : null,
+                arrivalTime: item.attraction.transportInfo.arrivalTime ? 
+                  moment(item.attraction.transportInfo.arrivalTime) : null
+              } : null
+            }
+          }))
+        }));
+
+        setItinerary(processedItinerary);
         setSelectedAttractions(decodedData.selectedAttractions);
         if (decodedData.customTitle) {
           setCustomTitle(decodedData.customTitle);
         }
+        
+        message.success('行程加载成功');
       } catch (error) {
         console.error('Failed to load shared plan:', error);
-        message.error('加载分享的行程失败');
+        message.error('加载分享的行程失败，链接可能已失效');
       }
     }
   }, []);
@@ -1661,6 +1693,17 @@ const TripPlanner = () => {
         </Space>
       </div>
     );
+  };
+
+  // 添加回复制链接到剪贴板的函数
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(shareLink)
+      .then(() => {
+        message.success('链接已复制到剪贴板');
+      })
+      .catch(() => {
+        message.error('复制失败，请手动复制');
+      });
   };
 
   // 在组件返回的 JSX 中使用 renderItinerary
