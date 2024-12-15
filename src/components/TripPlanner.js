@@ -752,7 +752,7 @@ const TripPlanner = () => {
 
         <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
           <Input.Search
-            placeholder="搜索地址（如：车站、机场、酒店等）"
+            placeholder="搜索地��（如：车站、机场、酒店等）"
             value={searchValue}
             onChange={e => setSearchValue(e.target.value)}
             onSearch={handleAddressSearch}
@@ -1044,7 +1044,7 @@ const TripPlanner = () => {
                       </div>
                     `;
                   } else {
-                    // 景点信息的展示，添加地址信息
+                    // 景点信息的展示，添加���址信息
                     spotIndex++;
                     const totalSpots = dayPlan.attractions.filter(a => !a.attraction.type || a.attraction.type !== 'transport').length;
                     return `
@@ -1747,12 +1747,7 @@ const TripPlanner = () => {
   };
 
   // 添加保存行程的函数
-  const handleSaveTrip = () => {
-    if (!saveTripName.trim()) {
-      message.warning('请输入行程名称');
-      return;
-    }
-
+  const handleSaveTrip = (tripName) => {
     try {
       // 获取已保存的行程
       const existingTrips = JSON.parse(localStorage.getItem('savedTrips') || '[]');
@@ -1760,7 +1755,7 @@ const TripPlanner = () => {
       // 准备要保存的行程数据
       const tripData = {
         id: Date.now(),
-        name: saveTripName,
+        name: tripName,
         date: moment().format('YYYY-MM-DD HH:mm:ss'),
         data: {
           itinerary,
@@ -1777,7 +1772,6 @@ const TripPlanner = () => {
       
       setSavedTrips(newTrips);
       setSaveModalVisible(false);
-      setSaveTripName('');
       message.success('行程保存成功');
     } catch (error) {
       console.error('Save trip error:', error);
@@ -1852,32 +1846,52 @@ const TripPlanner = () => {
   }, []);
 
   // 添加保存行程的模态框组件
-  const SaveTripModal = () => (
-    <Modal
-      title="保存行程"
-      open={saveModalVisible}
-      onOk={handleSaveTrip}
-      onCancel={() => {
-        setSaveModalVisible(false);
-        setSaveTripName('');
-      }}
-    >
-      <Form layout="vertical">
-        <Form.Item 
-          label="行程名称"
-          required
-          help="给这次行程起个名字吧"
-        >
-          <Input
-            value={saveTripName}
-            onChange={e => setSaveTripName(e.target.value)}
-            placeholder="例如：五一上海三日游"
-            maxLength={50}
-          />
-        </Form.Item>
-      </Form>
-    </Modal>
-  );
+  const SaveTripModal = () => {
+    const [localTripName, setLocalTripName] = useState('');
+
+    const handleOk = () => {
+      if (!localTripName.trim()) {
+        message.warning('请输入行程名称');
+        return;
+      }
+      handleSaveTrip(localTripName);
+    };
+
+    const handleCancel = () => {
+      setLocalTripName('');
+      setSaveModalVisible(false);
+    };
+
+    useEffect(() => {
+      if (!saveModalVisible) {
+        setLocalTripName('');
+      }
+    }, [saveModalVisible]);
+
+    return (
+      <Modal
+        title="保存行程"
+        open={saveModalVisible}
+        onOk={handleOk}
+        onCancel={handleCancel}
+      >
+        <Form layout="vertical">
+          <Form.Item 
+            label="行程名称"
+            required
+            help="给这次行程起个名字吧"
+          >
+            <Input
+              value={localTripName}
+              onChange={e => setLocalTripName(e.target.value)}
+              placeholder="例如：五一上海三日游"
+              maxLength={50}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    );
+  };
 
   // 添加已保存行程的抽屉组件
   const SavedTripsDrawer = () => {
